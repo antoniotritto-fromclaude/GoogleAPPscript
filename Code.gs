@@ -78,6 +78,14 @@ function setupCompletoSistema() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
 
+  // Verifica che ss sia definito
+  if (!ss) {
+    ui.alert('❌ ERRORE CRITICO:\n\nImpossibile ottenere il foglio di calcolo.\nRicarica la pagina (F5) e riprova.');
+    return;
+  }
+
+  Logger.log('Spreadsheet attivo: ' + ss.getName());
+
   // Conferma prima di procedere
   const result = ui.alert(
     '🚀 SETUP SISTEMA COMPLETO',
@@ -92,8 +100,14 @@ function setupCompletoSistema() {
   try {
     ui.alert('⏳ Setup in corso... Attendere prego (30-60 secondi)');
 
+    // Verifica ss ancora una volta prima di procedere
+    if (!ss) {
+      throw new Error('Spreadsheet object perso durante l\'esecuzione');
+    }
+
     // STEP 1: Crea tutti gli sheet
     Logger.log('STEP 1: Creazione sheet...');
+    Logger.log('Passando ss a createAllSheets: ' + (ss ? 'OK' : 'UNDEFINED'));
     createAllSheets(ss);
 
     // STEP 2: Setup Configurazione
@@ -134,6 +148,11 @@ function setupCompletoSistema() {
 
     // STEP 11: Setup altri sheet (Newsletter, etc.)
     Logger.log('STEP 11: Setup canali acquisizione...');
+    Logger.log('Tipo di ss prima di setupCanaliAcquisizione: ' + typeof ss);
+    Logger.log('ss definito? ' + (ss ? 'SÌ' : 'NO'));
+    if (!ss) {
+      throw new Error('STEP 11: ss è undefined prima di chiamare setupCanaliAcquisizione');
+    }
     setupCanaliAcquisizione(ss);
 
     // STEP 12: Setup Dashboard (ULTIMO - dipende da tutti gli altri)
