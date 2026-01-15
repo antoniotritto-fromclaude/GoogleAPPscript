@@ -1,0 +1,77 @@
+/**
+ * CRM Antonio Tritto - Server Principale
+ * Sistema CRM per Ecosistema Acquisizione Clienti
+ */
+
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const path = require('path');
+
+// Importa routes
+const dashboardRoutes = require('./routes/dashboard');
+const contattiRoutes = require('./routes/contatti');
+const pipelineRoutes = require('./routes/pipeline');
+const contrattiRoutes = require('./routes/contratti');
+const aumRoutes = require('./routes/aum');
+const chiamateRoutes = require('./routes/chiamate');
+const analyticsRoutes = require('./routes/analytics');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net"],
+      styleSrc: ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "fonts.googleapis.com"],
+      fontSrc: ["'self'", "fonts.gstatic.com", "cdn.jsdelivr.net"],
+      imgSrc: ["'self'", "data:", "blob:"]
+    }
+  }
+}));
+app.use(cors());
+app.use(morgan('dev'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve static files
+app.use(express.static(path.join(__dirname, '../public')));
+
+// API Routes
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/contatti', contattiRoutes);
+app.use('/api/pipeline', pipelineRoutes);
+app.use('/api/contratti', contrattiRoutes);
+app.use('/api/aum', aumRoutes);
+app.use('/api/chiamate', chiamateRoutes);
+app.use('/api/analytics', analyticsRoutes);
+
+// Serve main page
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({
+    error: 'Errore interno del server',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`
+╔════════════════════════════════════════════════════════════╗
+║     🎯 CRM Antonio Tritto - Private Banking                ║
+║     Server avviato su http://localhost:${PORT}               ║
+╚════════════════════════════════════════════════════════════╝
+  `);
+});
+
+module.exports = app;
