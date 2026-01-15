@@ -92,7 +92,7 @@ const insertPipeline = db.prepare(`
   INSERT INTO pipeline (pipeline_id, contatto_id, nome_deal, stage, aum_previsto, probabilita, fee_percentuale, fee_stimata, fonte, data_creazione, data_ultimo_avanzamento, giorni_in_stage)
   VALUES ('P-' || printf('%04d', ?), ?, ?, ?, ?, ?, 0.5, ? * 0.005, ?, date('now', '-' || abs(random() % 90) || ' days'), date('now', '-' || abs(random() % 14) || ' days'), abs(random() % 20))
 `);
-pipelineData.forEach(row => insertPipeline.run(row[0], ...row));
+pipelineData.forEach(row => insertPipeline.run(row[0], row[0], row[1], row[2], row[3], row[4], row[3], row[5]));
 console.log('✅ Pipeline inserita: ' + pipelineData.length + ' deals');
 
 // Contratti di esempio
