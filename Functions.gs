@@ -589,5 +589,3 @@ function popolaFunnelEsempio(ss) {
 
   sheet.getRange(2, 1, data.length, 17).setValues(data);
 }
-
-// Continua nel prossimo blocco...

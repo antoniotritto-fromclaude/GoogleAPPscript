@@ -645,5 +645,3 @@ function generaReportAUMMensile() {
   ss.setActiveSheet(sheet);
   sheet.getRange('A10003').activate();
 }
-
-// Continua...

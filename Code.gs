@@ -1284,5 +1284,3 @@ function setupFunnelGenerale(ss) {
   }
   sheet.setColumnWidth(1, 150);
 }
-
-// Continua nel prossimo blocco...
