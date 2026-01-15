@@ -439,8 +439,15 @@ function popolaContrattiEsempio(ss) {
     dataInvio.setDate(dataCreazione.getDate() + Math.floor(Math.random() * 7));
 
     const stato = stati[Math.floor(Math.random() * stati.length)];
-    const dataFirma = (stato === 'Firmato' || stato === 'Attivo') ? new Date(dataInvio.getTime() + Math.floor(Math.random() * 14) * 24 * 60 * 60 * 1000) : '';
-    const dataAttivazione = stato === 'Attivo' ? new Date(dataFirma.getTime() + 3 * 24 * 60 * 60 * 1000) : '';
+    let dataFirma = '';
+    let dataAttivazione = '';
+
+    if (stato === 'Firmato' || stato === 'Attivo') {
+      dataFirma = new Date(dataInvio.getTime() + Math.floor(Math.random() * 14) * 24 * 60 * 60 * 1000);
+      if (stato === 'Attivo') {
+        dataAttivazione = new Date(dataFirma.getTime() + 3 * 24 * 60 * 60 * 1000);
+      }
+    }
 
     const feePerc = 0.005 + Math.random() * 0.005; // 0.5% - 1%
     const durata = 3; // anni
