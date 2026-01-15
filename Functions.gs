@@ -10,16 +10,28 @@
 // ═══════════════════════════════════════════════════════════════════
 
 function setupCanaliAcquisizione(ss) {
-  setupNewsletter(ss);
-  setupColdCalling(ss);
-  setupPartnership(ss);
-  setupTFREntry(ss);
-  setupEventiLibro(ss);
-  setupPercorsiFormativi(ss);
+  if (!ss) {
+    throw new Error('Spreadsheet object is undefined in setupCanaliAcquisizione');
+  }
+
+  try {
+    setupNewsletter(ss);
+    setupColdCalling(ss);
+    setupPartnership(ss);
+    setupTFREntry(ss);
+    setupEventiLibro(ss);
+    setupPercorsiFormativi(ss);
+  } catch (error) {
+    Logger.log('Errore in setupCanaliAcquisizione: ' + error);
+    throw error;
+  }
 }
 
 function setupNewsletter(ss) {
   const sheet = ss.getSheetByName('NEWSLETTER');
+  if (!sheet) {
+    throw new Error('Sheet NEWSLETTER non trovato. Esegui prima la creazione degli sheet.');
+  }
   sheet.clear();
 
   const headers = ['#', 'Data Invio', 'Oggetto', 'Invii', 'Aperture', 'Open %', 'Click', 'Click %', 'Lead', 'Clienti', 'AUM', 'Note'];
