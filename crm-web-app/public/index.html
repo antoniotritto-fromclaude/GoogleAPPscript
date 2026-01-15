@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRM Antonio Tritto - Private Banking Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <div class="logo-icon">AT</div>
+          <div>
+            <div class="logo-text">CRM Antonio Tritto</div>
+            <div class="logo-subtitle">Private Banking</div>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">Menu Principale</div>
+          <div class="nav-item active" data-page="dashboard">
+            <i class="bi bi-speedometer2"></i>
+            <span>Dashboard</span>
+          </div>
+          <div class="nav-item" data-page="contatti">
+            <i class="bi bi-people"></i>
+            <span>Contatti</span>
+            <span class="nav-badge" id="badge-contatti">0</span>
+          </div>
+          <div class="nav-item" data-page="pipeline">
+            <i class="bi bi-funnel"></i>
+            <span>Pipeline</span>
+            <span class="nav-badge" id="badge-pipeline">0</span>
+          </div>
+          <div class="nav-item" data-page="contratti">
+            <i class="bi bi-file-earmark-text"></i>
+            <span>Contratti</span>
+          </div>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">Operatività</div>
+          <div class="nav-item" data-page="chiamate">
+            <i class="bi bi-telephone"></i>
+            <span>Chiamate</span>
+            <span class="nav-badge warning" id="badge-followup">0</span>
+          </div>
+          <div class="nav-item" data-page="aum">
+            <i class="bi bi-graph-up-arrow"></i>
+            <span>AUM Tracking</span>
+          </div>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">Analisi</div>
+          <div class="nav-item" data-page="analytics">
+            <i class="bi bi-bar-chart-line"></i>
+            <span>Analytics</span>
+          </div>
+          <div class="nav-item" data-page="report">
+            <i class="bi bi-file-earmark-bar-graph"></i>
+            <span>Report</span>
+          </div>
+        </div>
+      </nav>
+
+      <div style="padding: var(--spacing-md); border-top: 1px solid var(--border-color);">
+        <div class="nav-item" onclick="location.reload()">
+          <i class="bi bi-arrow-clockwise"></i>
+          <span>Aggiorna Dati</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-left">
+          <h1 id="page-title">Dashboard</h1>
+          <p id="page-subtitle">Panoramica performance e KPI</p>
+        </div>
+        <div class="header-right">
+          <button class="btn btn-secondary" onclick="refreshData()">
+            <i class="bi bi-arrow-clockwise"></i> Aggiorna
+          </button>
+          <button class="btn btn-primary" onclick="showQuickAdd()">
+            <i class="bi bi-plus-lg"></i> Azione Rapida
+          </button>
+        </div>
+      </header>
+
+      <!-- Dashboard Page -->
+      <div id="page-dashboard" class="page-content">
+        <!-- KPI Cards -->
+        <div class="kpi-grid" id="kpi-container">
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">AUM Totale</span>
+              <div class="kpi-icon blue"><i class="bi bi-wallet2"></i></div>
+            </div>
+            <div class="kpi-value" id="kpi-aum">-</div>
+            <div class="kpi-change positive"><i class="bi bi-arrow-up"></i> vs mese precedente</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Clienti Attivi</span>
+              <div class="kpi-icon green"><i class="bi bi-people"></i></div>
+            </div>
+            <div class="kpi-value green" id="kpi-clienti">-</div>
+            <div class="kpi-change positive"><i class="bi bi-arrow-up"></i> nuovi clienti</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Pipeline Value</span>
+              <div class="kpi-icon purple"><i class="bi bi-funnel"></i></div>
+            </div>
+            <div class="kpi-value" id="kpi-pipeline">-</div>
+            <div class="kpi-change" id="kpi-pipeline-deals">- deal attivi</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Fee Annuali</span>
+              <div class="kpi-icon orange"><i class="bi bi-currency-euro"></i></div>
+            </div>
+            <div class="kpi-value orange" id="kpi-fee">-</div>
+            <div class="kpi-change" id="kpi-conversion">Tasso conv: -%</div>
+          </div>
+        </div>
+
+        <!-- Dashboard Grid -->
+        <div class="dashboard-grid">
+          <!-- Pipeline Funnel -->
+          <div class="card card-half">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Sales Pipeline</h3>
+                <p class="card-subtitle">Distribuzione deal per stage</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="funnel-container" id="funnel-container">
+                <div class="loading"><div class="spinner"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CSAT / Performance -->
+          <div class="card card-half">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Distribuzione Clienti</h3>
+                <p class="card-subtitle">Per tier di valore</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="csat-container">
+                <div class="chart-container" style="height: 200px;">
+                  <canvas id="tier-chart"></canvas>
+                </div>
+                <div class="csat-legend" id="tier-legend"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Alerts -->
+          <div class="card card-third">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Alert & Notifiche</h3>
+                <p class="card-subtitle">Azioni richieste</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="alerts-list" id="alerts-container">
+                <div class="loading"><div class="spinner"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top Deals -->
+          <div class="card card-third">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Top Opportunità</h3>
+                <p class="card-subtitle">Deal più promettenti</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="deals-list" id="top-deals">
+                <div class="loading"><div class="spinner"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Activity Chart -->
+          <div class="card card-third">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Attività 30 Giorni</h3>
+                <p class="card-subtitle">Riepilogo operatività</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="chart-container" style="height: 200px;">
+                <canvas id="activity-chart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- AUM Trend -->
+          <div class="card card-half">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Trend AUM</h3>
+                <p class="card-subtitle">Ultimi 6 mesi</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="chart-container">
+                <canvas id="aum-trend-chart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Agent Performance -->
+          <div class="card card-half">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Performance Agente</h3>
+                <p class="card-subtitle">Statistiche mensili</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <table class="performance-table">
+                <thead>
+                  <tr>
+                    <th>Agente</th>
+                    <th>Stato</th>
+                    <th>Chiamate</th>
+                    <th>Deal Chiusi</th>
+                    <th>AUM</th>
+                  </tr>
+                </thead>
+                <tbody id="performance-table">
+                  <tr>
+                    <td colspan="5" class="text-center text-muted">Caricamento...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contatti Page -->
+      <div id="page-contatti" class="page-content hidden">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Database Contatti</h3>
+              <p class="card-subtitle">Gestione contatti e prospect</p>
+            </div>
+            <button class="btn btn-primary" onclick="showAddContatto()">
+              <i class="bi bi-plus-lg"></i> Nuovo Contatto
+            </button>
+          </div>
+          <div class="card-body">
+            <div style="display: flex; gap: var(--spacing-md); margin-bottom: var(--spacing-lg);">
+              <input type="text" class="form-input" placeholder="Cerca contatti..." id="search-contatti" style="max-width: 300px;">
+              <select class="form-select" id="filter-tier" style="max-width: 150px;">
+                <option value="">Tutti i Tier</option>
+                <option value="A+">A+ (VIP)</option>
+                <option value="A">A (HOT)</option>
+                <option value="B">B (WARM)</option>
+                <option value="C">C (COLD)</option>
+              </select>
+              <select class="form-select" id="filter-cliente" style="max-width: 150px;">
+                <option value="">Tutti</option>
+                <option value="true">Solo Clienti</option>
+                <option value="false">Solo Prospect</option>
+              </select>
+            </div>
+            <table class="performance-table">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Azienda</th>
+                  <th>Categoria</th>
+                  <th>Tier</th>
+                  <th>Engagement</th>
+                  <th>AUM Potenziale</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="contatti-table">
+                <tr><td colspan="7" class="text-center"><div class="spinner"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pipeline Page -->
+      <div id="page-pipeline" class="page-content hidden">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Sales Pipeline</h3>
+              <p class="card-subtitle">Gestione opportunità di vendita</p>
+            </div>
+            <button class="btn btn-primary" onclick="showAddDeal()">
+              <i class="bi bi-plus-lg"></i> Nuovo Deal
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="tabs">
+              <button class="tab active" data-stage="">Tutti</button>
+              <button class="tab" data-stage="Lead">Lead</button>
+              <button class="tab" data-stage="Qualificato">Qualificato</button>
+              <button class="tab" data-stage="Proposta Inviata">Proposta</button>
+              <button class="tab" data-stage="Negoziazione">Negoziazione</button>
+              <button class="tab" data-stage="Cliente Attivo">Chiusi</button>
+            </div>
+            <table class="performance-table">
+              <thead>
+                <tr>
+                  <th>Deal</th>
+                  <th>Stage</th>
+                  <th>AUM Previsto</th>
+                  <th>Probabilità</th>
+                  <th>Giorni</th>
+                  <th>Prossima Azione</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="pipeline-table">
+                <tr><td colspan="7" class="text-center"><div class="spinner"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contratti Page -->
+      <div id="page-contratti" class="page-content hidden">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Gestione Contratti</h3>
+              <p class="card-subtitle">Contratti attivi e in corso</p>
+            </div>
+            <button class="btn btn-primary" onclick="showAddContratto()">
+              <i class="bi bi-plus-lg"></i> Nuovo Contratto
+            </button>
+          </div>
+          <div class="card-body">
+            <table class="performance-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Cliente</th>
+                  <th>Tipo</th>
+                  <th>AUM</th>
+                  <th>Fee Annuale</th>
+                  <th>Stato</th>
+                  <th>Scadenza</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="contratti-table">
+                <tr><td colspan="8" class="text-center"><div class="spinner"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chiamate Page -->
+      <div id="page-chiamate" class="page-content hidden">
+        <div class="kpi-grid" style="margin-bottom: var(--spacing-lg);">
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Chiamate Oggi</span>
+              <div class="kpi-icon blue"><i class="bi bi-telephone"></i></div>
+            </div>
+            <div class="kpi-value" id="chiamate-oggi">-</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Follow-up Oggi</span>
+              <div class="kpi-icon orange"><i class="bi bi-calendar-check"></i></div>
+            </div>
+            <div class="kpi-value orange" id="followup-oggi">-</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Follow-up Scaduti</span>
+              <div class="kpi-icon red"><i class="bi bi-exclamation-triangle"></i></div>
+            </div>
+            <div class="kpi-value text-danger" id="followup-scaduti">-</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Tasso Successo</span>
+              <div class="kpi-icon green"><i class="bi bi-percent"></i></div>
+            </div>
+            <div class="kpi-value green" id="tasso-successo">-%</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Registro Chiamate</h3>
+              <p class="card-subtitle">Storico e follow-up</p>
+            </div>
+            <button class="btn btn-primary" onclick="showAddChiamata()">
+              <i class="bi bi-plus-lg"></i> Nuova Chiamata
+            </button>
+          </div>
+          <div class="card-body">
+            <table class="performance-table">
+              <thead>
+                <tr>
+                  <th>Contatto</th>
+                  <th>Tipo</th>
+                  <th>Esito</th>
+                  <th>Interesse</th>
+                  <th>Data</th>
+                  <th>Follow-up</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="chiamate-table">
+                <tr><td colspan="7" class="text-center"><div class="spinner"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUM Page -->
+      <div id="page-aum" class="page-content hidden">
+        <div class="kpi-grid" style="margin-bottom: var(--spacing-lg);">
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">AUM Totale</span>
+              <div class="kpi-icon blue"><i class="bi bi-wallet2"></i></div>
+            </div>
+            <div class="kpi-value" id="aum-totale">-</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Nuove Acquisizioni</span>
+              <div class="kpi-icon green"><i class="bi bi-plus-circle"></i></div>
+            </div>
+            <div class="kpi-value green" id="aum-acquisizioni">-</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Performance</span>
+              <div class="kpi-icon purple"><i class="bi bi-graph-up"></i></div>
+            </div>
+            <div class="kpi-value" id="aum-performance">-</div>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="card card-half">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">AUM per Cliente</h3>
+                <p class="card-subtitle">Top clienti per patrimonio</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="chart-container">
+                <canvas id="aum-clienti-chart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="card card-half">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Ultime Operazioni</h3>
+                <p class="card-subtitle">Movimenti recenti</p>
+              </div>
+              <button class="btn btn-primary" onclick="showAddAUM()">
+                <i class="bi bi-plus-lg"></i> Nuova Operazione
+              </button>
+            </div>
+            <div class="card-body">
+              <table class="performance-table">
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Operazione</th>
+                    <th>Variazione</th>
+                    <th>AUM Nuovo</th>
+                  </tr>
+                </thead>
+                <tbody id="aum-table">
+                  <tr><td colspan="4" class="text-center"><div class="spinner"></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analytics Page -->
+      <div id="page-analytics" class="page-content hidden">
+        <div class="dashboard-grid">
+          <div class="card card-full">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Performance Canali Acquisizione</h3>
+                <p class="card-subtitle">ROI e conversioni per fonte</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="chart-container" style="height: 350px;">
+                <canvas id="canali-chart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="card card-half">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Funnel Conversione</h3>
+                <p class="card-subtitle">Tassi di conversione per stage</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="chart-container">
+                <canvas id="conversion-chart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="card card-half">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Velocity Pipeline</h3>
+                <p class="card-subtitle">Tempo medio per stage (giorni)</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="chart-container">
+                <canvas id="velocity-chart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Report Page -->
+      <div id="page-report" class="page-content hidden">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Report e Export</h3>
+              <p class="card-subtitle">Genera report personalizzati</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="empty-state">
+              <i class="bi bi-file-earmark-bar-graph"></i>
+              <h3>Funzionalità Report</h3>
+              <p>I report automatici sono configurati nel sistema.</p>
+              <p class="mt-md">Report disponibili: Giornaliero, Settimanale, Mensile</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal Template -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Titolo Modal</h3>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <!-- Dynamic content -->
+      </div>
+      <div class="modal-footer" id="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Annulla</button>
+        <button class="btn btn-primary" id="modal-submit">Salva</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions Modal -->
+  <div class="modal-overlay" id="quick-actions-modal">
+    <div class="modal" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3>Azione Rapida</h3>
+        <button class="modal-close" onclick="closeQuickActions()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: flex; flex-direction: column; gap: var(--spacing-md);">
+          <button class="btn btn-primary" onclick="showAddContatto(); closeQuickActions();">
+            <i class="bi bi-person-plus"></i> Nuovo Contatto
+          </button>
+          <button class="btn btn-success" onclick="showAddDeal(); closeQuickActions();">
+            <i class="bi bi-funnel"></i> Nuovo Deal
+          </button>
+          <button class="btn btn-warning" onclick="showAddChiamata(); closeQuickActions();">
+            <i class="bi bi-telephone-plus"></i> Registra Chiamata
+          </button>
+          <button class="btn btn-secondary" onclick="showAddContratto(); closeQuickActions();">
+            <i class="bi bi-file-earmark-plus"></i> Nuovo Contratto
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
