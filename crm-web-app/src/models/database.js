@@ -1,19 +1,152 @@
 /**
- * Database SQLite - Schema e Connessione
+ * Database SQLite con sql.js (puro JavaScript, no compilazione nativa)
  * CRM Antonio Tritto - Private Banking
  */
 
-const Database = require('better-sqlite3');
+const initSqlJs = require('sql.js');
+const fs = require('fs');
 const path = require('path');
 
 const dbPath = path.join(__dirname, '../../data/crm.db');
-const db = new Database(dbPath);
+const dataDir = path.join(__dirname, '../../data');
 
-// Abilita foreign keys
-db.pragma('foreign_keys = ON');
+let database = null;
+let SQL = null;
+let isInitialized = false;
+
+// Assicura che la directory data esista
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+// Salva il database su file
+function saveDatabase() {
+  if (database) {
+    const data = database.export();
+    const buffer = Buffer.from(data);
+    fs.writeFileSync(dbPath, buffer);
+  }
+}
+
+// Salva periodicamente
+let pendingSave = false;
+function scheduleSave() {
+  if (!pendingSave) {
+    pendingSave = true;
+    setTimeout(() => {
+      saveDatabase();
+      pendingSave = false;
+    }, 500);
+  }
+}
+
+// Wrapper per statement - compatibile con API better-sqlite3
+class StatementWrapper {
+  constructor(sqlText) {
+    this.sqlText = sqlText;
+  }
+
+  run(...params) {
+    try {
+      database.run(this.sqlText, params);
+      scheduleSave();
+      const lastId = database.exec("SELECT last_insert_rowid() as id");
+      return {
+        changes: database.getRowsModified(),
+        lastInsertRowid: lastId[0]?.values[0]?.[0] || 0
+      };
+    } catch (e) {
+      console.error('SQL run Error:', e.message, '\nSQL:', this.sqlText, '\nParams:', params);
+      throw e;
+    }
+  }
+
+  get(...params) {
+    try {
+      const stmt = database.prepare(this.sqlText);
+      if (params.length > 0) stmt.bind(params);
+      if (stmt.step()) {
+        const cols = stmt.getColumnNames();
+        const vals = stmt.get();
+        const row = {};
+        cols.forEach((col, i) => row[col] = vals[i]);
+        stmt.free();
+        return row;
+      }
+      stmt.free();
+      return undefined;
+    } catch (e) {
+      console.error('SQL get Error:', e.message, '\nSQL:', this.sqlText);
+      throw e;
+    }
+  }
+
+  all(...params) {
+    try {
+      const results = [];
+      const stmt = database.prepare(this.sqlText);
+      if (params.length > 0) stmt.bind(params);
+      while (stmt.step()) {
+        const cols = stmt.getColumnNames();
+        const vals = stmt.get();
+        const row = {};
+        cols.forEach((col, i) => row[col] = vals[i]);
+        results.push(row);
+      }
+      stmt.free();
+      return results;
+    } catch (e) {
+      console.error('SQL all Error:', e.message, '\nSQL:', this.sqlText);
+      throw e;
+    }
+  }
+}
+
+// Database wrapper con API compatibile better-sqlite3
+const db = {
+  prepare(sql) {
+    if (!database) throw new Error('Database not initialized');
+    return new StatementWrapper(sql);
+  },
+
+  exec(sql) {
+    if (!database) throw new Error('Database not initialized');
+    try {
+      database.run(sql);
+      scheduleSave();
+    } catch (e) {
+      console.error('SQL exec Error:', e.message);
+      throw e;
+    }
+  },
+
+  pragma(sql) {
+    // sql.js non supporta tutti i pragma, ignora silenziosamente
+  }
+};
+
+// Inizializza database (chiamato all'avvio del server)
+async function initDatabase() {
+  if (isInitialized) return;
+
+  console.log('🔄 Inizializzazione sql.js...');
+  SQL = await initSqlJs();
+
+  if (fs.existsSync(dbPath)) {
+    const fileBuffer = fs.readFileSync(dbPath);
+    database = new SQL.Database(fileBuffer);
+    console.log('✅ Database caricato da file');
+  } else {
+    database = new SQL.Database();
+    console.log('✅ Nuovo database creato');
+  }
+
+  isInitialized = true;
+}
 
 // Crea le tabelle
-const initializeDatabase = () => {
+const initializeDatabase = async () => {
+  await initDatabase();
 
   // Tabella Configurazione
   db.exec(`
@@ -40,10 +173,10 @@ const initializeDatabase = () => {
       telefono TEXT,
       cellulare TEXT,
       linkedin TEXT,
-      categoria TEXT CHECK(categoria IN ('Imprenditore', 'Commercialista', 'Avvocato', 'Notaio', 'Medico', 'Odontoiatra', 'Farmacista', 'Manager', 'Dirigente', 'Altro')),
-      tier TEXT CHECK(tier IN ('A+', 'A', 'B', 'C')) DEFAULT 'C',
+      categoria TEXT,
+      tier TEXT DEFAULT 'C',
       fonte TEXT,
-      engagement_score INTEGER DEFAULT 5 CHECK(engagement_score BETWEEN 1 AND 10),
+      engagement_score INTEGER DEFAULT 5,
       aum_potenziale REAL DEFAULT 0,
       is_cliente INTEGER DEFAULT 0,
       note TEXT,
@@ -61,7 +194,7 @@ const initializeDatabase = () => {
       pipeline_id TEXT UNIQUE,
       contatto_id INTEGER,
       nome_deal TEXT NOT NULL,
-      stage TEXT CHECK(stage IN ('Lead', 'Contatto', 'Qualificato', 'Proposta Inviata', 'Negoziazione', 'Contratto Inviato', 'Contratto Firmato', 'Cliente Attivo', 'Chiuso Perso')) DEFAULT 'Lead',
+      stage TEXT DEFAULT 'Lead',
       aum_previsto REAL DEFAULT 0,
       probabilita INTEGER DEFAULT 10,
       fee_percentuale REAL DEFAULT 0.5,
@@ -76,8 +209,7 @@ const initializeDatabase = () => {
       prossima_azione TEXT,
       data_prossima_azione DATE,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (contatto_id) REFERENCES contatti(id) ON DELETE SET NULL
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -89,11 +221,11 @@ const initializeDatabase = () => {
       pipeline_id INTEGER,
       contatto_id INTEGER,
       cliente_nome TEXT NOT NULL,
-      tipo_contratto TEXT CHECK(tipo_contratto IN ('Gestione Patrimonio', 'Consulenza Finanziaria', 'TFR Aziendale', 'Piano Pensionistico', 'Polizza Vita', 'Investimenti', 'Advisory', 'Altro')),
+      tipo_contratto TEXT,
       aum REAL DEFAULT 0,
       fee_percentuale REAL DEFAULT 0.5,
       fee_annuale REAL DEFAULT 0,
-      stato TEXT CHECK(stato IN ('Bozza', 'Inviato', 'In Revisione', 'Approvato', 'Firmato', 'Attivo', 'Scaduto', 'Annullato', 'Rinnovato')) DEFAULT 'Bozza',
+      stato TEXT DEFAULT 'Bozza',
       data_creazione DATE DEFAULT CURRENT_DATE,
       data_invio DATE,
       data_firma DATE,
@@ -104,9 +236,7 @@ const initializeDatabase = () => {
       documento_url TEXT,
       note TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (pipeline_id) REFERENCES pipeline(id) ON DELETE SET NULL,
-      FOREIGN KEY (contatto_id) REFERENCES contatti(id) ON DELETE SET NULL
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -117,16 +247,14 @@ const initializeDatabase = () => {
       contatto_id INTEGER,
       contratto_id INTEGER,
       cliente_nome TEXT NOT NULL,
-      tipo_operazione TEXT CHECK(tipo_operazione IN ('Nuova Acquisizione', 'Versamento Aggiuntivo', 'Prelievo Parziale', 'Performance Positiva', 'Performance Negativa', 'Trasferimento In', 'Trasferimento Out', 'Chiusura Account')),
+      tipo_operazione TEXT,
       aum_precedente REAL DEFAULT 0,
       variazione REAL DEFAULT 0,
       aum_nuovo REAL DEFAULT 0,
       performance_percentuale REAL DEFAULT 0,
       data_operazione DATE DEFAULT CURRENT_DATE,
       note TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (contatto_id) REFERENCES contatti(id) ON DELETE SET NULL,
-      FOREIGN KEY (contratto_id) REFERENCES contratti(id) ON DELETE SET NULL
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -138,10 +266,10 @@ const initializeDatabase = () => {
       contatto_id INTEGER,
       pipeline_id INTEGER,
       contatto_nome TEXT NOT NULL,
-      tipo_chiamata TEXT CHECK(tipo_chiamata IN ('Cold Call', 'Follow-up', 'Discovery Call', 'Presentazione', 'Negoziazione', 'Check-in Cliente', 'Supporto', 'Altro')),
-      esito TEXT CHECK(esito IN ('Interessato', 'Non Interessato', 'Richiamare', 'No Risposta', 'Appuntamento Fissato', 'Info Richieste', 'Rifiuto', 'Completato')),
-      qualita TEXT CHECK(qualita IN ('Ottima', 'Buona', 'Media', 'Scarsa')),
-      livello_interesse TEXT CHECK(livello_interesse IN ('Alto', 'Medio', 'Basso', 'Nullo')),
+      tipo_chiamata TEXT,
+      esito TEXT,
+      qualita TEXT,
+      livello_interesse TEXT,
       durata_minuti INTEGER DEFAULT 0,
       data_chiamata DATE DEFAULT CURRENT_DATE,
       ora_chiamata TIME,
@@ -149,9 +277,7 @@ const initializeDatabase = () => {
       follow_up_completato INTEGER DEFAULT 0,
       note TEXT,
       prossimi_passi TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (contatto_id) REFERENCES contatti(id) ON DELETE SET NULL,
-      FOREIGN KEY (pipeline_id) REFERENCES pipeline(id) ON DELETE SET NULL
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -161,18 +287,16 @@ const initializeDatabase = () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       contatto_id INTEGER,
       pipeline_id INTEGER,
-      tipo_interazione TEXT CHECK(tipo_interazione IN ('Chiamata', 'Email', 'Meeting', 'Video Call', 'WhatsApp', 'LinkedIn', 'Evento', 'Documento Inviato', 'Contratto', 'Nota', 'Altro')),
-      canale TEXT CHECK(canale IN ('Telefono', 'Email', 'Video', 'Di Persona', 'Social Media', 'WhatsApp', 'Altro')),
+      tipo_interazione TEXT,
+      canale TEXT,
       descrizione TEXT,
-      sentiment TEXT CHECK(sentiment IN ('Molto Positivo', 'Positivo', 'Neutrale', 'Negativo', 'Molto Negativo')),
+      sentiment TEXT,
       stage_prima TEXT,
       stage_dopo TEXT,
       cambio_stage INTEGER DEFAULT 0,
       documento_url TEXT,
       data_interazione DATETIME DEFAULT CURRENT_TIMESTAMP,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (contatto_id) REFERENCES contatti(id) ON DELETE CASCADE,
-      FOREIGN KEY (pipeline_id) REFERENCES pipeline(id) ON DELETE SET NULL
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -217,20 +341,8 @@ const initializeDatabase = () => {
     )
   `);
 
-  // Indici per performance
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_contatti_tier ON contatti(tier);
-    CREATE INDEX IF NOT EXISTS idx_contatti_categoria ON contatti(categoria);
-    CREATE INDEX IF NOT EXISTS idx_pipeline_stage ON pipeline(stage);
-    CREATE INDEX IF NOT EXISTS idx_pipeline_contatto ON pipeline(contatto_id);
-    CREATE INDEX IF NOT EXISTS idx_contratti_stato ON contratti(stato);
-    CREATE INDEX IF NOT EXISTS idx_chiamate_data ON chiamate(data_chiamata);
-    CREATE INDEX IF NOT EXISTS idx_chiamate_follow_up ON chiamate(data_follow_up, follow_up_completato);
-    CREATE INDEX IF NOT EXISTS idx_timeline_contatto ON timeline(contatto_id);
-    CREATE INDEX IF NOT EXISTS idx_registro_aum_data ON registro_aum(data_operazione);
-  `);
-
-  console.log('✅ Database inizializzato con successo');
+  saveDatabase();
+  console.log('✅ Tabelle database create');
 };
 
-module.exports = { db, initializeDatabase };
+module.exports = { db, initializeDatabase, initDatabase, saveDatabase };

@@ -9,15 +9,6 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 
-// Importa routes
-const dashboardRoutes = require('./routes/dashboard');
-const contattiRoutes = require('./routes/contatti');
-const pipelineRoutes = require('./routes/pipeline');
-const contrattiRoutes = require('./routes/contratti');
-const aumRoutes = require('./routes/aum');
-const chiamateRoutes = require('./routes/chiamate');
-const analyticsRoutes = require('./routes/analytics');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -41,15 +32,6 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files
 app.use(express.static(path.join(__dirname, '../public')));
 
-// API Routes
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/contatti', contattiRoutes);
-app.use('/api/pipeline', pipelineRoutes);
-app.use('/api/contratti', contrattiRoutes);
-app.use('/api/aum', aumRoutes);
-app.use('/api/chiamate', chiamateRoutes);
-app.use('/api/analytics', analyticsRoutes);
-
 // Serve main page
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
@@ -64,14 +46,48 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`
+// Avvio asincrono per inizializzare il database prima delle routes
+async function startServer() {
+  try {
+    // Inizializza database
+    const { initDatabase } = require('./models/database');
+    await initDatabase();
+    console.log('✅ Database pronto');
+
+    // Carica routes dopo l'inizializzazione del database
+    const dashboardRoutes = require('./routes/dashboard');
+    const contattiRoutes = require('./routes/contatti');
+    const pipelineRoutes = require('./routes/pipeline');
+    const contrattiRoutes = require('./routes/contratti');
+    const aumRoutes = require('./routes/aum');
+    const chiamateRoutes = require('./routes/chiamate');
+    const analyticsRoutes = require('./routes/analytics');
+
+    // API Routes
+    app.use('/api/dashboard', dashboardRoutes);
+    app.use('/api/contatti', contattiRoutes);
+    app.use('/api/pipeline', pipelineRoutes);
+    app.use('/api/contratti', contrattiRoutes);
+    app.use('/api/aum', aumRoutes);
+    app.use('/api/chiamate', chiamateRoutes);
+    app.use('/api/analytics', analyticsRoutes);
+
+    // Start server
+    app.listen(PORT, () => {
+      console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║     🎯 CRM Antonio Tritto - Private Banking                ║
 ║     Server avviato su http://localhost:${PORT}               ║
 ╚════════════════════════════════════════════════════════════╝
-  `);
-});
+      `);
+    });
+
+  } catch (error) {
+    console.error('❌ Errore avvio server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 module.exports = app;
