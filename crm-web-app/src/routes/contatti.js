@@ -5,7 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { db } = require('../models/database');
+const { db, saveDatabase } = require('../models/database');
 
 // GET /api/contatti - Lista tutti i contatti
 router.get('/', (req, res) => {
@@ -38,7 +38,6 @@ router.get('/', (req, res) => {
 
     const contatti = db.prepare(query).all(...params);
 
-    // Count totale
     let countQuery = `SELECT COUNT(*) as total FROM contatti WHERE 1=1`;
     const countParams = [];
     if (tier) { countQuery += ` AND tier = ?`; countParams.push(tier); }
@@ -59,32 +58,23 @@ router.get('/', (req, res) => {
   }
 });
 
-// GET /api/contatti/:id - Singolo contatto
-router.get('/:id', (req, res) => {
+// ===== ROUTE SPECIFICHE PRIMA DI /:id =====
+
+// GET /api/contatti/stats/categorie - Statistiche per categoria
+router.get('/stats/categorie', (req, res) => {
   try {
-    const contatto = db.prepare('SELECT * FROM contatti WHERE id = ?').get(req.params.id);
-    if (!contatto) {
-      return res.status(404).json({ error: 'Contatto non trovato' });
-    }
-
-    // Pipeline associata
-    const pipeline = db.prepare('SELECT * FROM pipeline WHERE contatto_id = ?').all(req.params.id);
-
-    // Contratti associati
-    const contratti = db.prepare('SELECT * FROM contratti WHERE contatto_id = ?').all(req.params.id);
-
-    // Timeline
-    const timeline = db.prepare('SELECT * FROM timeline WHERE contatto_id = ? ORDER BY data_interazione DESC').all(req.params.id);
-
-    // Chiamate
-    const chiamate = db.prepare('SELECT * FROM chiamate WHERE contatto_id = ? ORDER BY data_chiamata DESC').all(req.params.id);
-
-    // AUM
-    const aum = db.prepare('SELECT * FROM registro_aum WHERE contatto_id = ? ORDER BY data_operazione DESC').all(req.params.id);
-
-    res.json({ contatto, pipeline, contratti, timeline, chiamate, aum });
+    const stats = db.prepare(`
+      SELECT categoria, COUNT(*) as count,
+        SUM(CASE WHEN is_cliente = 1 THEN 1 ELSE 0 END) as clienti,
+        AVG(engagement_score) as engagement_medio,
+        SUM(aum_potenziale) as aum_potenziale_totale
+      FROM contatti
+      GROUP BY categoria
+      ORDER BY count DESC
+    `).all();
+    res.json(stats);
   } catch (error) {
-    res.status(500).json({ error: 'Errore nel recupero contatto' });
+    res.status(500).json({ error: 'Errore statistiche' });
   }
 });
 
@@ -105,11 +95,94 @@ router.post('/', (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
     `).run(nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin, categoria, tier || 'C', fonte, engagement_score || 5, aum_potenziale || 0, note);
 
+    saveDatabase();
     const newContatto = db.prepare('SELECT * FROM contatti WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(newContatto);
   } catch (error) {
     console.error('Errore creazione contatto:', error);
     res.status(500).json({ error: 'Errore nella creazione contatto' });
+  }
+});
+
+// POST /api/contatti/import - Importa contatti da CSV
+router.post('/import', (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!records || !Array.isArray(records)) {
+      return res.status(400).json({ error: 'Records array required' });
+    }
+
+    let imported = 0;
+    const insertStmt = db.prepare(`
+      INSERT INTO contatti (nome, cognome, azienda, ruolo, email, telefono, categoria, tier, fonte, aum_potenziale, data_primo_contatto)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
+    `);
+
+    records.forEach(record => {
+      try {
+        insertStmt.run(
+          record.nome || '',
+          record.cognome || '',
+          record.azienda || '',
+          record.ruolo || '',
+          record.email || '',
+          record.telefono || '',
+          record.categoria || '',
+          record.tier || 'C',
+          record.fonte || '',
+          parseInt(record.aum_potenziale) || 0
+        );
+        imported++;
+      } catch (e) {
+        console.error('Import row error:', e.message);
+      }
+    });
+
+    saveDatabase();
+    res.json({ success: true, imported, total: records.length });
+  } catch (error) {
+    console.error('Import error:', error);
+    res.status(500).json({ error: 'Errore importazione' });
+  }
+});
+
+// POST /api/contatti/bulk-delete - Elimina multipli contatti
+router.post('/bulk-delete', (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids)) {
+      return res.status(400).json({ error: 'IDs array required' });
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(`DELETE FROM contatti WHERE id IN (${placeholders})`).run(...ids);
+
+    saveDatabase();
+    res.json({ success: true, deleted: ids.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Errore eliminazione' });
+  }
+});
+
+// ===== ROUTE CON PARAMETRI /:id =====
+
+// GET /api/contatti/:id - Singolo contatto
+router.get('/:id', (req, res) => {
+  try {
+    const contatto = db.prepare('SELECT * FROM contatti WHERE id = ?').get(req.params.id);
+    if (!contatto) {
+      return res.status(404).json({ error: 'Contatto non trovato' });
+    }
+
+    const pipeline = db.prepare('SELECT * FROM pipeline WHERE contatto_id = ?').all(req.params.id);
+    const contratti = db.prepare('SELECT * FROM contratti WHERE contatto_id = ?').all(req.params.id);
+    const timeline = db.prepare('SELECT * FROM timeline WHERE contatto_id = ? ORDER BY data_interazione DESC').all(req.params.id);
+    const chiamate = db.prepare('SELECT * FROM chiamate WHERE contatto_id = ? ORDER BY data_chiamata DESC').all(req.params.id);
+    const aum = db.prepare('SELECT * FROM registro_aum WHERE contatto_id = ? ORDER BY data_operazione DESC').all(req.params.id);
+
+    res.json({ contatto, pipeline, contratti, timeline, chiamate, aum });
+  } catch (error) {
+    res.status(500).json({ error: 'Errore nel recupero contatto' });
   }
 });
 
@@ -148,6 +221,7 @@ router.put('/:id', (req, res) => {
       WHERE id = ?
     `).run(nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin, categoria, tier, fonte, engagement_score, aum_potenziale, is_cliente, note, req.params.id);
 
+    saveDatabase();
     const updated = db.prepare('SELECT * FROM contatti WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error) {
@@ -164,91 +238,10 @@ router.delete('/:id', (req, res) => {
     }
 
     db.prepare('DELETE FROM contatti WHERE id = ?').run(req.params.id);
+    saveDatabase();
     res.json({ message: 'Contatto eliminato', id: req.params.id });
   } catch (error) {
     res.status(500).json({ error: 'Errore nell\'eliminazione contatto' });
-  }
-});
-
-// GET /api/contatti/stats/categorie - Statistiche per categoria
-router.get('/stats/categorie', (req, res) => {
-  try {
-    const stats = db.prepare(`
-      SELECT categoria, COUNT(*) as count,
-        SUM(CASE WHEN is_cliente = 1 THEN 1 ELSE 0 END) as clienti,
-        AVG(engagement_score) as engagement_medio,
-        SUM(aum_potenziale) as aum_potenziale_totale
-      FROM contatti
-      GROUP BY categoria
-      ORDER BY count DESC
-    `).all();
-    res.json(stats);
-  } catch (error) {
-    res.status(500).json({ error: 'Errore statistiche' });
-  }
-});
-
-// POST /api/contatti/import - Importa contatti da CSV
-router.post('/import', (req, res) => {
-  try {
-    const { records } = req.body;
-    if (!records || !Array.isArray(records)) {
-      return res.status(400).json({ error: 'Records array required' });
-    }
-
-    let imported = 0;
-    const insertStmt = db.prepare(`
-      INSERT INTO contatti (nome, cognome, azienda, ruolo, email, telefono, categoria, tier, fonte, aum_potenziale, data_primo_contatto)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
-    `);
-
-    records.forEach(record => {
-      try {
-        insertStmt.run(
-          record.nome || '',
-          record.cognome || '',
-          record.azienda || '',
-          record.ruolo || '',
-          record.email || '',
-          record.telefono || '',
-          record.categoria || '',
-          record.tier || 'C',
-          record.fonte || '',
-          parseInt(record.aum_potenziale) || 0
-        );
-        imported++;
-      } catch (e) {
-        console.error('Import row error:', e.message);
-      }
-    });
-
-    const { saveDatabase } = require('../models/database');
-    saveDatabase();
-
-    res.json({ success: true, imported, total: records.length });
-  } catch (error) {
-    console.error('Import error:', error);
-    res.status(500).json({ error: 'Errore importazione' });
-  }
-});
-
-// POST /api/contatti/bulk-delete - Elimina multipli contatti
-router.post('/bulk-delete', (req, res) => {
-  try {
-    const { ids } = req.body;
-    if (!ids || !Array.isArray(ids)) {
-      return res.status(400).json({ error: 'IDs array required' });
-    }
-
-    const placeholders = ids.map(() => '?').join(',');
-    db.prepare(`DELETE FROM contatti WHERE id IN (${placeholders})`).run(...ids);
-
-    const { saveDatabase } = require('../models/database');
-    saveDatabase();
-
-    res.json({ success: true, deleted: ids.length });
-  } catch (error) {
-    res.status(500).json({ error: 'Errore eliminazione' });
   }
 });
 

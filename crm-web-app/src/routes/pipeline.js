@@ -5,7 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { db } = require('../models/database');
+const { db, saveDatabase } = require('../models/database');
 
 // GET /api/pipeline - Lista pipeline
 router.get('/', (req, res) => {
@@ -53,6 +53,8 @@ router.get('/', (req, res) => {
   }
 });
 
+// ===== ROUTE SPECIFICHE PRIMA DI /:id =====
+
 // GET /api/pipeline/funnel - Dati per funnel
 router.get('/funnel', (req, res) => {
   try {
@@ -86,6 +88,102 @@ router.get('/funnel', (req, res) => {
   }
 });
 
+// POST /api/pipeline - Crea nuovo deal
+router.post('/', (req, res) => {
+  try {
+    const {
+      contatto_id, nome_deal, stage, aum_previsto, fee_percentuale,
+      fonte, responsabile, prossima_azione, data_prossima_azione, note
+    } = req.body;
+
+    if (!nome_deal) {
+      return res.status(400).json({ error: 'Nome deal obbligatorio' });
+    }
+
+    const lastId = db.prepare('SELECT MAX(id) as max FROM pipeline').get();
+    const newNum = (lastId.max || 0) + 1;
+    const pipeline_id = `P-${String(newNum).padStart(4, '0')}`;
+
+    const probabilitaMap = {
+      'Lead': 10, 'Contatto': 20, 'Qualificato': 40, 'Proposta Inviata': 60,
+      'Negoziazione': 75, 'Contratto Inviato': 85, 'Contratto Firmato': 95, 'Cliente Attivo': 100
+    };
+    const probabilita = probabilitaMap[stage] || 10;
+    const feePerc = fee_percentuale || 0.5;
+    const fee_stimata = (aum_previsto || 0) * (feePerc / 100);
+
+    const result = db.prepare(`
+      INSERT INTO pipeline (pipeline_id, contatto_id, nome_deal, stage, aum_previsto, probabilita, fee_percentuale, fee_stimata, fonte, responsabile, prossima_azione, data_prossima_azione, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(pipeline_id, contatto_id, nome_deal, stage || 'Lead', aum_previsto || 0, probabilita, feePerc, fee_stimata, fonte, responsabile || 'Antonio Tritto', prossima_azione, data_prossima_azione, note);
+
+    if (contatto_id) {
+      db.prepare(`
+        INSERT INTO timeline (contatto_id, pipeline_id, tipo_interazione, canale, descrizione, sentiment, stage_dopo, cambio_stage)
+        VALUES (?, ?, 'Nota', 'Altro', 'Deal creato in pipeline', 'Neutrale', ?, 0)
+      `).run(contatto_id, result.lastInsertRowid, stage || 'Lead');
+    }
+
+    saveDatabase();
+    const newDeal = db.prepare('SELECT * FROM pipeline WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json(newDeal);
+  } catch (error) {
+    console.error('Errore creazione deal:', error);
+    res.status(500).json({ error: 'Errore nella creazione deal' });
+  }
+});
+
+// POST /api/pipeline/import - Importa deals
+router.post('/import', (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!records || !Array.isArray(records)) {
+      return res.status(400).json({ error: 'Records array required' });
+    }
+
+    let imported = 0;
+    records.forEach(record => {
+      try {
+        const pipelineId = 'P-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+        const aum = parseInt(record.aum_previsto) || 0;
+        const fee = parseFloat(record.fee_percentuale) || 0.5;
+        db.prepare(`
+          INSERT INTO pipeline (pipeline_id, nome_deal, stage, aum_previsto, probabilita, fee_percentuale, fee_stimata, fonte, data_creazione)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, date('now'))
+        `).run(pipelineId, record.nome_deal, record.stage || 'Lead', aum, parseInt(record.probabilita) || 10, fee, aum * fee / 100, record.fonte || '');
+        imported++;
+      } catch (e) {
+        console.error('Import row error:', e.message);
+      }
+    });
+
+    saveDatabase();
+    res.json({ success: true, imported });
+  } catch (error) {
+    res.status(500).json({ error: 'Errore importazione' });
+  }
+});
+
+// POST /api/pipeline/bulk-delete
+router.post('/bulk-delete', (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids)) {
+      return res.status(400).json({ error: 'IDs array required' });
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(`DELETE FROM pipeline WHERE id IN (${placeholders})`).run(...ids);
+
+    saveDatabase();
+    res.json({ success: true, deleted: ids.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Errore eliminazione' });
+  }
+});
+
+// ===== ROUTE CON PARAMETRI /:id =====
+
 // GET /api/pipeline/:id - Singolo deal
 router.get('/:id', (req, res) => {
   try {
@@ -100,12 +198,10 @@ router.get('/:id', (req, res) => {
       return res.status(404).json({ error: 'Deal non trovato' });
     }
 
-    // Timeline del deal
     const timeline = db.prepare(`
       SELECT * FROM timeline WHERE pipeline_id = ? ORDER BY data_interazione DESC
     `).all(req.params.id);
 
-    // Contratti associati
     const contratti = db.prepare(`
       SELECT * FROM contratti WHERE pipeline_id = ?
     `).all(req.params.id);
@@ -113,53 +209,6 @@ router.get('/:id', (req, res) => {
     res.json({ deal, timeline, contratti });
   } catch (error) {
     res.status(500).json({ error: 'Errore recupero deal' });
-  }
-});
-
-// POST /api/pipeline - Crea nuovo deal
-router.post('/', (req, res) => {
-  try {
-    const {
-      contatto_id, nome_deal, stage, aum_previsto, fee_percentuale,
-      fonte, responsabile, prossima_azione, data_prossima_azione, note
-    } = req.body;
-
-    if (!nome_deal) {
-      return res.status(400).json({ error: 'Nome deal obbligatorio' });
-    }
-
-    // Genera pipeline_id
-    const lastId = db.prepare('SELECT MAX(id) as max FROM pipeline').get();
-    const newNum = (lastId.max || 0) + 1;
-    const pipeline_id = `P-${String(newNum).padStart(4, '0')}`;
-
-    // Calcola probabilità in base allo stage
-    const probabilitaMap = {
-      'Lead': 10, 'Contatto': 20, 'Qualificato': 40, 'Proposta Inviata': 60,
-      'Negoziazione': 75, 'Contratto Inviato': 85, 'Contratto Firmato': 95, 'Cliente Attivo': 100
-    };
-    const probabilita = probabilitaMap[stage] || 10;
-    const feePerc = fee_percentuale || 0.5;
-    const fee_stimata = (aum_previsto || 0) * (feePerc / 100);
-
-    const result = db.prepare(`
-      INSERT INTO pipeline (pipeline_id, contatto_id, nome_deal, stage, aum_previsto, probabilita, fee_percentuale, fee_stimata, fonte, responsabile, prossima_azione, data_prossima_azione, note)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(pipeline_id, contatto_id, nome_deal, stage || 'Lead', aum_previsto || 0, probabilita, feePerc, fee_stimata, fonte, responsabile || 'Antonio Tritto', prossima_azione, data_prossima_azione, note);
-
-    // Registra nella timeline
-    if (contatto_id) {
-      db.prepare(`
-        INSERT INTO timeline (contatto_id, pipeline_id, tipo_interazione, canale, descrizione, sentiment, stage_dopo, cambio_stage)
-        VALUES (?, ?, 'Nota', 'Altro', 'Deal creato in pipeline', 'Neutrale', ?, 0)
-      `).run(contatto_id, result.lastInsertRowid, stage || 'Lead');
-    }
-
-    const newDeal = db.prepare('SELECT * FROM pipeline WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json(newDeal);
-  } catch (error) {
-    console.error('Errore creazione deal:', error);
-    res.status(500).json({ error: 'Errore nella creazione deal' });
   }
 });
 
@@ -176,10 +225,8 @@ router.put('/:id', (req, res) => {
       responsabile, prossima_azione, data_prossima_azione, note, motivo_perdita
     } = req.body;
 
-    // Se cambia stage, aggiorna data avanzamento e resetta giorni
     const stageChanged = stage && stage !== deal.stage;
 
-    // Calcola probabilità
     const probabilitaMap = {
       'Lead': 10, 'Contatto': 20, 'Qualificato': 40, 'Proposta Inviata': 60,
       'Negoziazione': 75, 'Contratto Inviato': 85, 'Contratto Firmato': 95, 'Cliente Attivo': 100, 'Chiuso Perso': 0
@@ -208,19 +255,18 @@ router.put('/:id', (req, res) => {
       WHERE id = ?
     `).run(nome_deal, stage, aum, probabilita, feePerc, fee_stimata, responsabile, prossima_azione, data_prossima_azione, note, motivo_perdita, stageChanged ? 1 : 0, stageChanged ? 1 : 0, req.params.id);
 
-    // Registra cambio stage nella timeline
     if (stageChanged && deal.contatto_id) {
       db.prepare(`
         INSERT INTO timeline (contatto_id, pipeline_id, tipo_interazione, canale, descrizione, sentiment, stage_prima, stage_dopo, cambio_stage)
         VALUES (?, ?, 'Nota', 'Altro', ?, 'Neutrale', ?, ?, 1)
       `).run(deal.contatto_id, req.params.id, `Avanzamento da ${deal.stage} a ${stage}`, deal.stage, stage);
 
-      // Se diventa Cliente Attivo, aggiorna contatto
       if (stage === 'Cliente Attivo') {
         db.prepare('UPDATE contatti SET is_cliente = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(deal.contatto_id);
       }
     }
 
+    saveDatabase();
     const updated = db.prepare('SELECT * FROM pipeline WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (error) {
@@ -247,7 +293,6 @@ router.post('/:id/avanza', (req, res) => {
     const newStage = stages[currentIndex + 1];
     req.body.stage = newStage;
 
-    // Chiama PUT
     router.handle({ ...req, method: 'PUT' }, res);
   } catch (error) {
     res.status(500).json({ error: 'Errore avanzamento stage' });
@@ -263,60 +308,10 @@ router.delete('/:id', (req, res) => {
     }
 
     db.prepare('DELETE FROM pipeline WHERE id = ?').run(req.params.id);
+    saveDatabase();
     res.json({ message: 'Deal eliminato', id: req.params.id });
   } catch (error) {
     res.status(500).json({ error: 'Errore eliminazione deal' });
-  }
-});
-
-// POST /api/pipeline/import - Importa deals
-router.post('/import', (req, res) => {
-  try {
-    const { records } = req.body;
-    if (!records || !Array.isArray(records)) {
-      return res.status(400).json({ error: 'Records array required' });
-    }
-
-    let imported = 0;
-    records.forEach(record => {
-      try {
-        const pipelineId = 'P-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
-        const aum = parseInt(record.aum_previsto) || 0;
-        const fee = parseFloat(record.fee_percentuale) || 0.5;
-        db.prepare(`
-          INSERT INTO pipeline (pipeline_id, nome_deal, stage, aum_previsto, probabilita, fee_percentuale, fee_stimata, fonte, data_creazione)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, date('now'))
-        `).run(pipelineId, record.nome_deal, record.stage || 'Lead', aum, parseInt(record.probabilita) || 10, fee, aum * fee / 100, record.fonte || '');
-        imported++;
-      } catch (e) {
-        console.error('Import row error:', e.message);
-      }
-    });
-
-    const { saveDatabase } = require('../models/database');
-    saveDatabase();
-    res.json({ success: true, imported });
-  } catch (error) {
-    res.status(500).json({ error: 'Errore importazione' });
-  }
-});
-
-// POST /api/pipeline/bulk-delete
-router.post('/bulk-delete', (req, res) => {
-  try {
-    const { ids } = req.body;
-    if (!ids || !Array.isArray(ids)) {
-      return res.status(400).json({ error: 'IDs array required' });
-    }
-
-    const placeholders = ids.map(() => '?').join(',');
-    db.prepare(`DELETE FROM pipeline WHERE id IN (${placeholders})`).run(...ids);
-
-    const { saveDatabase } = require('../models/database');
-    saveDatabase();
-    res.json({ success: true, deleted: ids.length });
-  } catch (error) {
-    res.status(500).json({ error: 'Errore eliminazione' });
   }
 });
 
