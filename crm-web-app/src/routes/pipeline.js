@@ -269,4 +269,55 @@ router.delete('/:id', (req, res) => {
   }
 });
 
+// POST /api/pipeline/import - Importa deals
+router.post('/import', (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!records || !Array.isArray(records)) {
+      return res.status(400).json({ error: 'Records array required' });
+    }
+
+    let imported = 0;
+    records.forEach(record => {
+      try {
+        const pipelineId = 'P-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+        const aum = parseInt(record.aum_previsto) || 0;
+        const fee = parseFloat(record.fee_percentuale) || 0.5;
+        db.prepare(`
+          INSERT INTO pipeline (pipeline_id, nome_deal, stage, aum_previsto, probabilita, fee_percentuale, fee_stimata, fonte, data_creazione)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, date('now'))
+        `).run(pipelineId, record.nome_deal, record.stage || 'Lead', aum, parseInt(record.probabilita) || 10, fee, aum * fee / 100, record.fonte || '');
+        imported++;
+      } catch (e) {
+        console.error('Import row error:', e.message);
+      }
+    });
+
+    const { saveDatabase } = require('../models/database');
+    saveDatabase();
+    res.json({ success: true, imported });
+  } catch (error) {
+    res.status(500).json({ error: 'Errore importazione' });
+  }
+});
+
+// POST /api/pipeline/bulk-delete
+router.post('/bulk-delete', (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids)) {
+      return res.status(400).json({ error: 'IDs array required' });
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(`DELETE FROM pipeline WHERE id IN (${placeholders})`).run(...ids);
+
+    const { saveDatabase } = require('../models/database');
+    saveDatabase();
+    res.json({ success: true, deleted: ids.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Errore eliminazione' });
+  }
+});
+
 module.exports = router;

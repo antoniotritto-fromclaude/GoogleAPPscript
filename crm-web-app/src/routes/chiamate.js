@@ -282,4 +282,56 @@ router.delete('/:id', (req, res) => {
   }
 });
 
+// POST /api/chiamate/import
+router.post('/import', (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!records || !Array.isArray(records)) {
+      return res.status(400).json({ error: 'Records array required' });
+    }
+
+    let imported = 0;
+    let lastNum = db.prepare('SELECT MAX(id) as max FROM chiamate').get().max || 0;
+
+    records.forEach(record => {
+      try {
+        lastNum++;
+        const chiamataId = `CALL-${String(lastNum).padStart(4, '0')}`;
+        db.prepare(`
+          INSERT INTO chiamate (chiamata_id, contatto_nome, tipo_chiamata, esito, livello_interesse, durata_minuti, data_chiamata)
+          VALUES (?, ?, ?, ?, ?, ?, date('now'))
+        `).run(chiamataId, record.contatto_nome, record.tipo_chiamata || 'Cold Call', record.esito || '', record.livello_interesse || '', parseInt(record.durata_minuti) || 0);
+        imported++;
+      } catch (e) {
+        console.error('Import row error:', e.message);
+      }
+    });
+
+    const { saveDatabase } = require('../models/database');
+    saveDatabase();
+    res.json({ success: true, imported });
+  } catch (error) {
+    res.status(500).json({ error: 'Errore importazione' });
+  }
+});
+
+// POST /api/chiamate/bulk-delete
+router.post('/bulk-delete', (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids)) {
+      return res.status(400).json({ error: 'IDs array required' });
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(`DELETE FROM chiamate WHERE id IN (${placeholders})`).run(...ids);
+
+    const { saveDatabase } = require('../models/database');
+    saveDatabase();
+    res.json({ success: true, deleted: ids.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Errore eliminazione' });
+  }
+});
+
 module.exports = router;

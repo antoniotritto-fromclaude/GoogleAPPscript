@@ -84,7 +84,8 @@ function navigateTo(page) {
     chiamate: { title: 'Chiamate', subtitle: 'Registro chiamate e follow-up' },
     aum: { title: 'AUM Tracking', subtitle: 'Gestione patrimonio' },
     analytics: { title: 'Analytics', subtitle: 'Analisi e statistiche' },
-    report: { title: 'Report', subtitle: 'Report e export dati' }
+    report: { title: 'Report', subtitle: 'Report e export dati' },
+    gestione: { title: 'Gestione Database', subtitle: 'Import, export e gestione dati' }
   };
 
   document.getElementById('page-title').textContent = titles[page]?.title || page;
@@ -118,6 +119,9 @@ async function loadPageData(page) {
       break;
     case 'analytics':
       await loadAnalytics();
+      break;
+    case 'gestione':
+      await loadGestione();
       break;
   }
 }
@@ -1285,12 +1289,728 @@ async function completeFollowup(id) {
   }
 }
 
-function editContatto(id) {
-  alert('Funzione di modifica - ID: ' + id);
+// ========== EDIT FUNCTIONS ==========
+
+async function editContatto(id) {
+  try {
+    const data = await fetchAPI(`/contatti/${id}`);
+    const c = data.contatto;
+
+    const content = `
+      <form id="edit-contatto-form">
+        <input type="hidden" name="id" value="${id}">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Nome *</label>
+            <input type="text" class="form-input" name="nome" value="${c.nome || ''}" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Cognome</label>
+            <input type="text" class="form-input" name="cognome" value="${c.cognome || ''}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Azienda</label>
+            <input type="text" class="form-input" name="azienda" value="${c.azienda || ''}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Ruolo</label>
+            <input type="text" class="form-input" name="ruolo" value="${c.ruolo || ''}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-input" name="email" value="${c.email || ''}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Telefono</label>
+            <input type="tel" class="form-input" name="telefono" value="${c.telefono || ''}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Categoria</label>
+            <select class="form-select" name="categoria">
+              <option value="">Seleziona...</option>
+              ${['Imprenditore','Commercialista','Avvocato','Medico','Odontoiatra','Farmacista','Notaio','Manager','Dirigente','Altro'].map(cat =>
+                `<option value="${cat}" ${c.categoria === cat ? 'selected' : ''}>${cat}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tier</label>
+            <select class="form-select" name="tier">
+              ${['C','B','A','A+'].map(t =>
+                `<option value="${t}" ${c.tier === t ? 'selected' : ''}>${t}</option>`
+              ).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">AUM Potenziale</label>
+            <input type="number" class="form-input" name="aum_potenziale" value="${c.aum_potenziale || 0}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Engagement Score</label>
+            <input type="number" class="form-input" name="engagement_score" value="${c.engagement_score || 5}" min="1" max="10">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            <input type="checkbox" name="is_cliente" ${c.is_cliente ? 'checked' : ''}> È cliente attivo
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Note</label>
+          <textarea class="form-textarea" name="note">${c.note || ''}</textarea>
+        </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: var(--spacing-md); margin-top: var(--spacing-md);">
+          <button type="button" class="btn btn-danger" onclick="deleteContatto(${id})" style="float: left;">
+            <i class="bi bi-trash"></i> Elimina Contatto
+          </button>
+        </div>
+      </form>
+    `;
+
+    openModal('Modifica Contatto', content, async () => {
+      const form = document.getElementById('edit-contatto-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData);
+      data.is_cliente = form.querySelector('[name="is_cliente"]').checked ? 1 : 0;
+
+      try {
+        await fetchAPI(`/contatti/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        });
+        closeModal();
+        loadContatti();
+      } catch (error) {
+        alert('Errore nel salvataggio');
+      }
+    });
+  } catch (error) {
+    alert('Errore nel caricamento del contatto');
+  }
 }
 
-function viewContratto(id) {
-  alert('Visualizzazione contratto - ID: ' + id);
+async function editDeal(id) {
+  try {
+    const data = await fetchAPI(`/pipeline/${id}`);
+    const d = data.deal;
+
+    const content = `
+      <form id="edit-deal-form">
+        <input type="hidden" name="id" value="${id}">
+        <div class="form-group">
+          <label class="form-label">Nome Deal *</label>
+          <input type="text" class="form-input" name="nome_deal" value="${d.nome_deal || ''}" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Stage</label>
+            <select class="form-select" name="stage">
+              ${['Lead','Contatto','Qualificato','Proposta Inviata','Negoziazione','Contratto Inviato','Contratto Firmato','Cliente Attivo','Chiuso Perso'].map(s =>
+                `<option value="${s}" ${d.stage === s ? 'selected' : ''}>${s}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Probabilità %</label>
+            <input type="number" class="form-input" name="probabilita" value="${d.probabilita || 0}" min="0" max="100">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">AUM Previsto</label>
+            <input type="number" class="form-input" name="aum_previsto" value="${d.aum_previsto || 0}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fee %</label>
+            <input type="number" class="form-input" name="fee_percentuale" value="${d.fee_percentuale || 0.5}" step="0.1">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prossima Azione</label>
+          <input type="text" class="form-input" name="prossima_azione" value="${d.prossima_azione || ''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Note</label>
+          <textarea class="form-textarea" name="note">${d.note || ''}</textarea>
+        </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: var(--spacing-md); margin-top: var(--spacing-md);">
+          <button type="button" class="btn btn-danger" onclick="deleteDeal(${id})" style="float: left;">
+            <i class="bi bi-trash"></i> Elimina Deal
+          </button>
+        </div>
+      </form>
+    `;
+
+    openModal('Modifica Deal', content, async () => {
+      const form = document.getElementById('edit-deal-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData);
+
+      try {
+        await fetchAPI(`/pipeline/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        });
+        closeModal();
+        loadPipeline();
+      } catch (error) {
+        alert('Errore nel salvataggio');
+      }
+    });
+  } catch (error) {
+    alert('Errore nel caricamento del deal');
+  }
+}
+
+async function editChiamata(id) {
+  try {
+    const data = await fetchAPI(`/chiamate/${id}`);
+    const c = data.chiamata;
+
+    const content = `
+      <form id="edit-chiamata-form">
+        <input type="hidden" name="id" value="${id}">
+        <div class="form-group">
+          <label class="form-label">Nome Contatto</label>
+          <input type="text" class="form-input" name="contatto_nome" value="${c.contatto_nome || ''}" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Tipo Chiamata</label>
+            <select class="form-select" name="tipo_chiamata">
+              ${['Cold Call','Follow-up','Discovery Call','Presentazione','Negoziazione','Check-in Cliente'].map(t =>
+                `<option value="${t}" ${c.tipo_chiamata === t ? 'selected' : ''}>${t}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Esito</label>
+            <select class="form-select" name="esito">
+              <option value="">Seleziona...</option>
+              ${['Interessato','Non Interessato','Richiamare','No Risposta','Appuntamento Fissato','Info Richieste','Completato'].map(e =>
+                `<option value="${e}" ${c.esito === e ? 'selected' : ''}>${e}</option>`
+              ).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Livello Interesse</label>
+            <select class="form-select" name="livello_interesse">
+              <option value="">Seleziona...</option>
+              ${['Alto','Medio','Basso','Nullo'].map(l =>
+                `<option value="${l}" ${c.livello_interesse === l ? 'selected' : ''}>${l}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Durata (min)</label>
+            <input type="number" class="form-input" name="durata_minuti" value="${c.durata_minuti || 0}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data Follow-up</label>
+          <input type="date" class="form-input" name="data_follow_up" value="${c.data_follow_up ? c.data_follow_up.split('T')[0] : ''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Note</label>
+          <textarea class="form-textarea" name="note">${c.note || ''}</textarea>
+        </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: var(--spacing-md); margin-top: var(--spacing-md);">
+          <button type="button" class="btn btn-danger" onclick="deleteChiamata(${id})" style="float: left;">
+            <i class="bi bi-trash"></i> Elimina Chiamata
+          </button>
+        </div>
+      </form>
+    `;
+
+    openModal('Modifica Chiamata', content, async () => {
+      const form = document.getElementById('edit-chiamata-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData);
+
+      try {
+        await fetchAPI(`/chiamate/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        });
+        closeModal();
+        loadChiamate();
+      } catch (error) {
+        alert('Errore nel salvataggio');
+      }
+    });
+  } catch (error) {
+    alert('Errore nel caricamento della chiamata');
+  }
+}
+
+async function viewContratto(id) {
+  try {
+    const data = await fetchAPI(`/contratti/${id}`);
+    const c = data.contratto;
+
+    const content = `
+      <form id="edit-contratto-form">
+        <input type="hidden" name="id" value="${id}">
+        <div class="form-group">
+          <label class="form-label">ID Contratto</label>
+          <input type="text" class="form-input" value="${c.contratto_id}" disabled>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nome Cliente *</label>
+          <input type="text" class="form-input" name="cliente_nome" value="${c.cliente_nome || ''}" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Tipo Contratto</label>
+            <select class="form-select" name="tipo_contratto">
+              ${['Gestione Patrimonio','Consulenza Finanziaria','TFR Aziendale','Piano Pensionistico','Polizza Vita','Investimenti'].map(t =>
+                `<option value="${t}" ${c.tipo_contratto === t ? 'selected' : ''}>${t}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Stato</label>
+            <select class="form-select" name="stato">
+              ${['Bozza','Inviato','Attivo','Scaduto','Annullato'].map(s =>
+                `<option value="${s}" ${c.stato === s ? 'selected' : ''}>${s}</option>`
+              ).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">AUM</label>
+            <input type="number" class="form-input" name="aum" value="${c.aum || 0}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fee %</label>
+            <input type="number" class="form-input" name="fee_percentuale" value="${c.fee_percentuale || 0.5}" step="0.1">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Fee Annuale</label>
+            <input type="number" class="form-input" name="fee_annuale" value="${c.fee_annuale || 0}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Durata (mesi)</label>
+            <input type="number" class="form-input" name="durata_mesi" value="${c.durata_mesi || 12}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            <input type="checkbox" name="rinnovo_automatico" ${c.rinnovo_automatico ? 'checked' : ''}> Rinnovo automatico
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Note</label>
+          <textarea class="form-textarea" name="note">${c.note || ''}</textarea>
+        </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: var(--spacing-md); margin-top: var(--spacing-md);">
+          <button type="button" class="btn btn-danger" onclick="deleteContratto(${id})" style="float: left;">
+            <i class="bi bi-trash"></i> Elimina Contratto
+          </button>
+        </div>
+      </form>
+    `;
+
+    openModal('Modifica Contratto', content, async () => {
+      const form = document.getElementById('edit-contratto-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData);
+      data.rinnovo_automatico = form.querySelector('[name="rinnovo_automatico"]').checked ? 1 : 0;
+
+      try {
+        await fetchAPI(`/contratti/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        });
+        closeModal();
+        loadContratti();
+      } catch (error) {
+        alert('Errore nel salvataggio');
+      }
+    });
+  } catch (error) {
+    alert('Errore nel caricamento del contratto');
+  }
+}
+
+// ========== DELETE FUNCTIONS ==========
+
+async function deleteContatto(id) {
+  if (!confirm('Sei sicuro di voler eliminare questo contatto? Questa azione non può essere annullata.')) return;
+
+  try {
+    await fetchAPI(`/contatti/${id}`, { method: 'DELETE' });
+    closeModal();
+    loadContatti();
+  } catch (error) {
+    alert('Errore nell\'eliminazione');
+  }
+}
+
+async function deleteDeal(id) {
+  if (!confirm('Sei sicuro di voler eliminare questo deal? Questa azione non può essere annullata.')) return;
+
+  try {
+    await fetchAPI(`/pipeline/${id}`, { method: 'DELETE' });
+    closeModal();
+    loadPipeline();
+  } catch (error) {
+    alert('Errore nell\'eliminazione');
+  }
+}
+
+async function deleteChiamata(id) {
+  if (!confirm('Sei sicuro di voler eliminare questa chiamata?')) return;
+
+  try {
+    await fetchAPI(`/chiamate/${id}`, { method: 'DELETE' });
+    closeModal();
+    loadChiamate();
+  } catch (error) {
+    alert('Errore nell\'eliminazione');
+  }
+}
+
+async function deleteContratto(id) {
+  if (!confirm('Sei sicuro di voler eliminare questo contratto? Questa azione non può essere annullata.')) return;
+
+  try {
+    await fetchAPI(`/contratti/${id}`, { method: 'DELETE' });
+    closeModal();
+    loadContratti();
+  } catch (error) {
+    alert('Errore nell\'eliminazione');
+  }
+}
+
+// ========== BULK DELETE ==========
+
+let selectedItems = new Set();
+
+function toggleSelectAll(checkbox, tableId) {
+  const checkboxes = document.querySelectorAll(`#${tableId} .row-checkbox`);
+  checkboxes.forEach(cb => {
+    cb.checked = checkbox.checked;
+    if (checkbox.checked) {
+      selectedItems.add(cb.value);
+    } else {
+      selectedItems.delete(cb.value);
+    }
+  });
+  updateBulkActions();
+}
+
+function toggleSelectRow(checkbox) {
+  if (checkbox.checked) {
+    selectedItems.add(checkbox.value);
+  } else {
+    selectedItems.delete(checkbox.value);
+  }
+  updateBulkActions();
+}
+
+function updateBulkActions() {
+  const bulkBar = document.getElementById('bulk-actions-bar');
+  if (bulkBar) {
+    if (selectedItems.size > 0) {
+      bulkBar.style.display = 'flex';
+      document.getElementById('selected-count').textContent = selectedItems.size;
+    } else {
+      bulkBar.style.display = 'none';
+    }
+  }
+}
+
+async function bulkDelete(entityType) {
+  if (selectedItems.size === 0) return;
+
+  if (!confirm(`Sei sicuro di voler eliminare ${selectedItems.size} elementi? Questa azione non può essere annullata.`)) return;
+
+  try {
+    const ids = Array.from(selectedItems);
+    await fetchAPI(`/${entityType}/bulk-delete`, {
+      method: 'POST',
+      body: JSON.stringify({ ids })
+    });
+
+    selectedItems.clear();
+    updateBulkActions();
+
+    // Reload current page data
+    loadPageData(currentPage);
+  } catch (error) {
+    alert('Errore nell\'eliminazione in blocco');
+  }
+}
+
+function clearSelection() {
+  selectedItems.clear();
+  document.querySelectorAll('.row-checkbox, .select-all-checkbox').forEach(cb => cb.checked = false);
+  updateBulkActions();
+}
+
+// ========== CSV IMPORT ==========
+
+function showImportCSV(entityType) {
+  const templates = {
+    contatti: 'nome,cognome,azienda,ruolo,email,telefono,categoria,tier,fonte,aum_potenziale',
+    pipeline: 'nome_deal,stage,aum_previsto,probabilita,fonte,fee_percentuale',
+    contratti: 'cliente_nome,tipo_contratto,aum,fee_percentuale,durata_mesi',
+    chiamate: 'contatto_nome,tipo_chiamata,esito,livello_interesse,durata_minuti'
+  };
+
+  const content = `
+    <div class="import-container">
+      <div class="form-group">
+        <label class="form-label">Seleziona file CSV</label>
+        <input type="file" class="form-input" id="csv-file" accept=".csv">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Oppure incolla i dati CSV qui:</label>
+        <textarea class="form-textarea" id="csv-text" rows="10" placeholder="nome,cognome,email,..."></textarea>
+      </div>
+
+      <div style="background: var(--bg-tertiary); padding: var(--spacing-md); border-radius: var(--radius-md); margin-top: var(--spacing-md);">
+        <strong>Formato richiesto:</strong>
+        <code style="display: block; margin-top: var(--spacing-sm); word-break: break-all; font-size: 12px;">
+          ${templates[entityType]}
+        </code>
+      </div>
+
+      <div id="import-preview" style="margin-top: var(--spacing-lg); display: none;">
+        <h4 style="margin-bottom: var(--spacing-sm);">Anteprima (prime 5 righe):</h4>
+        <div id="preview-content" style="overflow-x: auto;"></div>
+      </div>
+    </div>
+  `;
+
+  openModal(`Importa ${entityType.charAt(0).toUpperCase() + entityType.slice(1)} da CSV`, content, async () => {
+    await processCSVImport(entityType);
+  });
+
+  // File change listener
+  setTimeout(() => {
+    document.getElementById('csv-file').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          document.getElementById('csv-text').value = event.target.result;
+          showCSVPreview(event.target.result);
+        };
+        reader.readAsText(file);
+      }
+    });
+
+    document.getElementById('csv-text').addEventListener('input', (e) => {
+      if (e.target.value.trim()) {
+        showCSVPreview(e.target.value);
+      }
+    });
+  }, 100);
+}
+
+function showCSVPreview(csvText) {
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 2) return;
+
+  const headers = lines[0].split(',').map(h => h.trim());
+  const rows = lines.slice(1, 6).map(line => line.split(',').map(c => c.trim()));
+
+  let html = '<table class="performance-table" style="font-size: 12px;"><thead><tr>';
+  headers.forEach(h => html += `<th>${h}</th>`);
+  html += '</tr></thead><tbody>';
+  rows.forEach(row => {
+    html += '<tr>';
+    row.forEach(cell => html += `<td>${cell}</td>`);
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  html += `<p style="margin-top: var(--spacing-sm); color: var(--text-secondary);">Totale righe: ${lines.length - 1}</p>`;
+
+  document.getElementById('import-preview').style.display = 'block';
+  document.getElementById('preview-content').innerHTML = html;
+}
+
+async function processCSVImport(entityType) {
+  const csvText = document.getElementById('csv-text').value.trim();
+  if (!csvText) {
+    alert('Inserisci i dati CSV');
+    return;
+  }
+
+  const lines = csvText.split('\n');
+  if (lines.length < 2) {
+    alert('Il file deve contenere almeno una riga di intestazione e una riga di dati');
+    return;
+  }
+
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/\s+/g, '_'));
+  const records = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const values = lines[i].split(',').map(v => v.trim());
+    const record = {};
+    headers.forEach((header, index) => {
+      record[header] = values[index] || '';
+    });
+    records.push(record);
+  }
+
+  try {
+    const response = await fetchAPI(`/${entityType}/import`, {
+      method: 'POST',
+      body: JSON.stringify({ records })
+    });
+
+    closeModal();
+    alert(`Importazione completata: ${response.imported || records.length} record importati`);
+    loadPageData(currentPage);
+  } catch (error) {
+    alert('Errore nell\'importazione: ' + error.message);
+  }
+}
+
+// ========== EXPORT CSV ==========
+
+async function exportCSV(entityType) {
+  try {
+    const data = await fetchAPI(`/${entityType}`);
+    let records = [];
+
+    switch(entityType) {
+      case 'contatti': records = data.contatti || data; break;
+      case 'pipeline': records = data; break;
+      case 'contratti': records = data; break;
+      case 'chiamate': records = data; break;
+      default: records = data;
+    }
+
+    if (!records || records.length === 0) {
+      alert('Nessun dato da esportare');
+      return;
+    }
+
+    const headers = Object.keys(records[0]).filter(k => k !== 'id');
+    let csv = headers.join(',') + '\n';
+
+    records.forEach(record => {
+      const row = headers.map(h => {
+        let val = record[h] || '';
+        if (typeof val === 'string' && val.includes(',')) {
+          val = `"${val}"`;
+        }
+        return val;
+      });
+      csv += row.join(',') + '\n';
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${entityType}_export_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  } catch (error) {
+    alert('Errore nell\'esportazione');
+  }
+}
+
+// ========== RESET DATABASE ==========
+
+async function showResetDatabase() {
+  const content = `
+    <div style="text-align: center; padding: var(--spacing-lg);">
+      <i class="bi bi-exclamation-triangle" style="font-size: 64px; color: var(--danger);"></i>
+      <h3 style="margin: var(--spacing-lg) 0;">Attenzione!</h3>
+      <p style="margin-bottom: var(--spacing-lg);">Questa azione eliminerà <strong>TUTTI</strong> i dati presenti nel database e li sostituirà con i dati di esempio.</p>
+      <p style="color: var(--text-secondary);">Questa operazione non può essere annullata.</p>
+
+      <div style="margin-top: var(--spacing-xl);">
+        <label style="display: flex; align-items: center; justify-content: center; gap: var(--spacing-sm);">
+          <input type="checkbox" id="confirm-reset"> Ho capito, voglio procedere
+        </label>
+      </div>
+    </div>
+  `;
+
+  openModal('Reset Database', content, async () => {
+    if (!document.getElementById('confirm-reset').checked) {
+      alert('Devi confermare per procedere');
+      return;
+    }
+
+    try {
+      await fetchAPI('/admin/reset-database', { method: 'POST' });
+      closeModal();
+      alert('Database resettato con successo');
+      location.reload();
+    } catch (error) {
+      alert('Errore nel reset del database');
+    }
+  });
+}
+
+async function showClearDatabase() {
+  const content = `
+    <div style="text-align: center; padding: var(--spacing-lg);">
+      <i class="bi bi-trash" style="font-size: 64px; color: var(--danger);"></i>
+      <h3 style="margin: var(--spacing-lg) 0;">Cancella Tutti i Dati</h3>
+      <p style="margin-bottom: var(--spacing-lg);">Questa azione eliminerà <strong>TUTTI</strong> i dati presenti nel database.</p>
+      <p style="color: var(--text-secondary);">Il database rimarrà vuoto. Questa operazione non può essere annullata.</p>
+
+      <div style="margin-top: var(--spacing-xl);">
+        <label style="display: flex; align-items: center; justify-content: center; gap: var(--spacing-sm);">
+          <input type="checkbox" id="confirm-clear"> Ho capito, voglio procedere
+        </label>
+      </div>
+    </div>
+  `;
+
+  openModal('Cancella Database', content, async () => {
+    if (!document.getElementById('confirm-clear').checked) {
+      alert('Devi confermare per procedere');
+      return;
+    }
+
+    try {
+      await fetchAPI('/admin/clear-database', { method: 'POST' });
+      closeModal();
+      alert('Database cancellato con successo');
+      location.reload();
+    } catch (error) {
+      alert('Errore nella cancellazione del database');
+    }
+  });
+}
+
+// ========== GESTIONE PAGE ==========
+
+async function loadGestione() {
+  try {
+    const stats = await fetchAPI('/admin/stats');
+
+    document.getElementById('stat-contatti').textContent = stats.contatti || 0;
+    document.getElementById('stat-pipeline').textContent = stats.pipeline || 0;
+    document.getElementById('stat-contratti').textContent = stats.contratti || 0;
+    document.getElementById('stat-chiamate').textContent = stats.chiamate || 0;
+  } catch (error) {
+    console.error('Error loading gestione stats:', error);
+  }
 }
 
 function refreshData() {

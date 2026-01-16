@@ -188,4 +188,68 @@ router.get('/stats/categorie', (req, res) => {
   }
 });
 
+// POST /api/contatti/import - Importa contatti da CSV
+router.post('/import', (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!records || !Array.isArray(records)) {
+      return res.status(400).json({ error: 'Records array required' });
+    }
+
+    let imported = 0;
+    const insertStmt = db.prepare(`
+      INSERT INTO contatti (nome, cognome, azienda, ruolo, email, telefono, categoria, tier, fonte, aum_potenziale, data_primo_contatto)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
+    `);
+
+    records.forEach(record => {
+      try {
+        insertStmt.run(
+          record.nome || '',
+          record.cognome || '',
+          record.azienda || '',
+          record.ruolo || '',
+          record.email || '',
+          record.telefono || '',
+          record.categoria || '',
+          record.tier || 'C',
+          record.fonte || '',
+          parseInt(record.aum_potenziale) || 0
+        );
+        imported++;
+      } catch (e) {
+        console.error('Import row error:', e.message);
+      }
+    });
+
+    const { saveDatabase } = require('../models/database');
+    saveDatabase();
+
+    res.json({ success: true, imported, total: records.length });
+  } catch (error) {
+    console.error('Import error:', error);
+    res.status(500).json({ error: 'Errore importazione' });
+  }
+});
+
+// POST /api/contatti/bulk-delete - Elimina multipli contatti
+router.post('/bulk-delete', (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids)) {
+      return res.status(400).json({ error: 'IDs array required' });
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(`DELETE FROM contatti WHERE id IN (${placeholders})`).run(...ids);
+
+    const { saveDatabase } = require('../models/database');
+    saveDatabase();
+
+    res.json({ success: true, deleted: ids.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Errore eliminazione' });
+  }
+});
+
 module.exports = router;

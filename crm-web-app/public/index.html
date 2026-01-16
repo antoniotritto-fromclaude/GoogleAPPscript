@@ -71,6 +71,14 @@
             <span>Report</span>
           </div>
         </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">Gestione Dati</div>
+          <div class="nav-item" data-page="gestione">
+            <i class="bi bi-database-gear"></i>
+            <span>Gestione DB</span>
+          </div>
+        </div>
       </nav>
 
       <div style="padding: var(--spacing-md); border-top: 1px solid var(--border-color);">
@@ -572,15 +580,175 @@
           <div class="card-header">
             <div>
               <h3 class="card-title">Report e Export</h3>
-              <p class="card-subtitle">Genera report personalizzati</p>
+              <p class="card-subtitle">Esporta i tuoi dati</p>
             </div>
           </div>
           <div class="card-body">
-            <div class="empty-state">
-              <i class="bi bi-file-earmark-bar-graph"></i>
-              <h3>Funzionalità Report</h3>
-              <p>I report automatici sono configurati nel sistema.</p>
-              <p class="mt-md">Report disponibili: Giornaliero, Settimanale, Mensile</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: var(--spacing-lg);">
+              <div class="card" style="padding: var(--spacing-lg); text-align: center;">
+                <i class="bi bi-people" style="font-size: 48px; color: var(--primary);"></i>
+                <h4 style="margin: var(--spacing-md) 0;">Contatti</h4>
+                <button class="btn btn-primary" onclick="exportCSV('contatti')">
+                  <i class="bi bi-download"></i> Esporta CSV
+                </button>
+              </div>
+              <div class="card" style="padding: var(--spacing-lg); text-align: center;">
+                <i class="bi bi-funnel" style="font-size: 48px; color: var(--success);"></i>
+                <h4 style="margin: var(--spacing-md) 0;">Pipeline</h4>
+                <button class="btn btn-success" onclick="exportCSV('pipeline')">
+                  <i class="bi bi-download"></i> Esporta CSV
+                </button>
+              </div>
+              <div class="card" style="padding: var(--spacing-lg); text-align: center;">
+                <i class="bi bi-file-earmark-text" style="font-size: 48px; color: var(--warning);"></i>
+                <h4 style="margin: var(--spacing-md) 0;">Contratti</h4>
+                <button class="btn btn-warning" onclick="exportCSV('contratti')">
+                  <i class="bi bi-download"></i> Esporta CSV
+                </button>
+              </div>
+              <div class="card" style="padding: var(--spacing-lg); text-align: center;">
+                <i class="bi bi-telephone" style="font-size: 48px; color: var(--info);"></i>
+                <h4 style="margin: var(--spacing-md) 0;">Chiamate</h4>
+                <button class="btn btn-secondary" onclick="exportCSV('chiamate')">
+                  <i class="bi bi-download"></i> Esporta CSV
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gestione Database Page -->
+      <div id="page-gestione" class="page-content hidden">
+        <div class="dashboard-grid">
+          <!-- Import Section -->
+          <div class="card card-half">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Importa Dati</h3>
+                <p class="card-subtitle">Importa dati da file CSV</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div style="display: flex; flex-direction: column; gap: var(--spacing-md);">
+                <button class="btn btn-primary" onclick="showImportCSV('contatti')">
+                  <i class="bi bi-upload"></i> Importa Contatti
+                </button>
+                <button class="btn btn-success" onclick="showImportCSV('pipeline')">
+                  <i class="bi bi-upload"></i> Importa Pipeline
+                </button>
+                <button class="btn btn-warning" onclick="showImportCSV('contratti')">
+                  <i class="bi bi-upload"></i> Importa Contratti
+                </button>
+                <button class="btn btn-secondary" onclick="showImportCSV('chiamate')">
+                  <i class="bi bi-upload"></i> Importa Chiamate
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Export Section -->
+          <div class="card card-half">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Esporta Dati</h3>
+                <p class="card-subtitle">Scarica i tuoi dati in CSV</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div style="display: flex; flex-direction: column; gap: var(--spacing-md);">
+                <button class="btn btn-primary" onclick="exportCSV('contatti')">
+                  <i class="bi bi-download"></i> Esporta Contatti
+                </button>
+                <button class="btn btn-success" onclick="exportCSV('pipeline')">
+                  <i class="bi bi-download"></i> Esporta Pipeline
+                </button>
+                <button class="btn btn-warning" onclick="exportCSV('contratti')">
+                  <i class="bi bi-download"></i> Esporta Contratti
+                </button>
+                <button class="btn btn-secondary" onclick="exportCSV('chiamate')">
+                  <i class="bi bi-download"></i> Esporta Chiamate
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Database Management -->
+          <div class="card card-full">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Gestione Database</h3>
+                <p class="card-subtitle">Operazioni avanzate sul database</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div style="display: flex; gap: var(--spacing-lg); flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 250px; padding: var(--spacing-lg); background: var(--bg-tertiary); border-radius: var(--radius-md);">
+                  <h4 style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-md);">
+                    <i class="bi bi-arrow-repeat" style="color: var(--warning);"></i> Reset Database
+                  </h4>
+                  <p style="color: var(--text-secondary); margin-bottom: var(--spacing-md);">
+                    Elimina tutti i dati esistenti e ripristina i dati di esempio iniziali.
+                  </p>
+                  <button class="btn btn-warning" onclick="showResetDatabase()">
+                    <i class="bi bi-arrow-repeat"></i> Reset con Dati Demo
+                  </button>
+                </div>
+
+                <div style="flex: 1; min-width: 250px; padding: var(--spacing-lg); background: var(--bg-tertiary); border-radius: var(--radius-md);">
+                  <h4 style="display: flex; align-items: center; gap: var(--spacing-sm); margin-bottom: var(--spacing-md);">
+                    <i class="bi bi-trash" style="color: var(--danger);"></i> Cancella Database
+                  </h4>
+                  <p style="color: var(--text-secondary); margin-bottom: var(--spacing-md);">
+                    Elimina permanentemente tutti i dati. Il database rimarrà vuoto.
+                  </p>
+                  <button class="btn btn-danger" onclick="showClearDatabase()">
+                    <i class="bi bi-trash"></i> Cancella Tutto
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Statistics -->
+          <div class="card card-full">
+            <div class="card-header">
+              <div>
+                <h3 class="card-title">Statistiche Database</h3>
+                <p class="card-subtitle">Riepilogo dati presenti</p>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="kpi-grid" id="db-stats">
+                <div class="kpi-card">
+                  <div class="kpi-header">
+                    <span class="kpi-title">Contatti</span>
+                    <div class="kpi-icon blue"><i class="bi bi-people"></i></div>
+                  </div>
+                  <div class="kpi-value" id="stat-contatti">-</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-header">
+                    <span class="kpi-title">Deal Pipeline</span>
+                    <div class="kpi-icon green"><i class="bi bi-funnel"></i></div>
+                  </div>
+                  <div class="kpi-value green" id="stat-pipeline">-</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-header">
+                    <span class="kpi-title">Contratti</span>
+                    <div class="kpi-icon orange"><i class="bi bi-file-text"></i></div>
+                  </div>
+                  <div class="kpi-value orange" id="stat-contratti">-</div>
+                </div>
+                <div class="kpi-card">
+                  <div class="kpi-header">
+                    <span class="kpi-title">Chiamate</span>
+                    <div class="kpi-icon purple"><i class="bi bi-telephone"></i></div>
+                  </div>
+                  <div class="kpi-value" id="stat-chiamate">-</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

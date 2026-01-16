@@ -247,4 +247,59 @@ router.delete('/:id', (req, res) => {
   }
 });
 
+// POST /api/contratti/import
+router.post('/import', (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!records || !Array.isArray(records)) {
+      return res.status(400).json({ error: 'Records array required' });
+    }
+
+    let imported = 0;
+    const year = new Date().getFullYear();
+    let lastNum = db.prepare("SELECT MAX(CAST(SUBSTR(contratto_id, -3) AS INTEGER)) as max FROM contratti WHERE contratto_id LIKE ?").get(`CTR-${year}-%`).max || 0;
+
+    records.forEach(record => {
+      try {
+        lastNum++;
+        const contrattoId = `CTR-${year}-${String(lastNum).padStart(3, '0')}`;
+        const aum = parseInt(record.aum) || 0;
+        const fee = parseFloat(record.fee_percentuale) || 0.5;
+        db.prepare(`
+          INSERT INTO contratti (contratto_id, cliente_nome, tipo_contratto, aum, fee_percentuale, fee_annuale, stato, durata_mesi, data_scadenza, rinnovo_automatico)
+          VALUES (?, ?, ?, ?, ?, ?, 'Bozza', ?, date('now', '+' || ? || ' months'), 1)
+        `).run(contrattoId, record.cliente_nome, record.tipo_contratto || 'Gestione Patrimonio', aum, fee, aum * fee / 100, parseInt(record.durata_mesi) || 12, parseInt(record.durata_mesi) || 12);
+        imported++;
+      } catch (e) {
+        console.error('Import row error:', e.message);
+      }
+    });
+
+    const { saveDatabase } = require('../models/database');
+    saveDatabase();
+    res.json({ success: true, imported });
+  } catch (error) {
+    res.status(500).json({ error: 'Errore importazione' });
+  }
+});
+
+// POST /api/contratti/bulk-delete
+router.post('/bulk-delete', (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids)) {
+      return res.status(400).json({ error: 'IDs array required' });
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(`DELETE FROM contratti WHERE id IN (${placeholders})`).run(...ids);
+
+    const { saveDatabase } = require('../models/database');
+    saveDatabase();
+    res.json({ success: true, deleted: ids.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Errore eliminazione' });
+  }
+});
+
 module.exports = router;
