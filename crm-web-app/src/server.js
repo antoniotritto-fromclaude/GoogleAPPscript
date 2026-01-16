@@ -65,6 +65,7 @@ async function startServer() {
     const chiamateRoutes = require('./routes/chiamate');
     const analyticsRoutes = require('./routes/analytics');
     const adminRoutes = require('./routes/admin');
+    const interazioniRoutes = require('./routes/interazioni');
 
     // API Routes
     app.use('/api/dashboard', dashboardRoutes);
@@ -75,6 +76,7 @@ async function startServer() {
     app.use('/api/chiamate', chiamateRoutes);
     app.use('/api/analytics', analyticsRoutes);
     app.use('/api/admin', adminRoutes);
+    app.use('/api/interazioni', interazioniRoutes);
 
     // Start server
     app.listen(PORT, () => {

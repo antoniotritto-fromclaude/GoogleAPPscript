@@ -10,7 +10,7 @@ const { db, saveDatabase } = require('../models/database');
 // GET /api/contatti - Lista tutti i contatti
 router.get('/', (req, res) => {
   try {
-    const { tier, categoria, is_cliente, search, limit = 100, offset = 0 } = req.query;
+    const { tier, categoria, is_cliente, search, stato_sviluppo, fonte_acquisizione, limit = 100, offset = 0 } = req.query;
 
     let query = `SELECT * FROM contatti WHERE 1=1`;
     const params = [];
@@ -26,6 +26,14 @@ router.get('/', (req, res) => {
     if (is_cliente !== undefined) {
       query += ` AND is_cliente = ?`;
       params.push(is_cliente === 'true' ? 1 : 0);
+    }
+    if (stato_sviluppo) {
+      query += ` AND stato_sviluppo = ?`;
+      params.push(stato_sviluppo);
+    }
+    if (fonte_acquisizione) {
+      query += ` AND (fonte_acquisizione = ? OR fonte = ?)`;
+      params.push(fonte_acquisizione, fonte_acquisizione);
     }
     if (search) {
       query += ` AND (nome LIKE ? OR cognome LIKE ? OR azienda LIKE ? OR email LIKE ?)`;
@@ -43,6 +51,8 @@ router.get('/', (req, res) => {
     if (tier) { countQuery += ` AND tier = ?`; countParams.push(tier); }
     if (categoria) { countQuery += ` AND categoria = ?`; countParams.push(categoria); }
     if (is_cliente !== undefined) { countQuery += ` AND is_cliente = ?`; countParams.push(is_cliente === 'true' ? 1 : 0); }
+    if (stato_sviluppo) { countQuery += ` AND stato_sviluppo = ?`; countParams.push(stato_sviluppo); }
+    if (fonte_acquisizione) { countQuery += ` AND (fonte_acquisizione = ? OR fonte = ?)`; countParams.push(fonte_acquisizione, fonte_acquisizione); }
     if (search) {
       countQuery += ` AND (nome LIKE ? OR cognome LIKE ? OR azienda LIKE ? OR email LIKE ?)`;
       const searchParam = `%${search}%`;
@@ -83,7 +93,8 @@ router.post('/', (req, res) => {
   try {
     const {
       nome, cognome, azienda, ruolo, email, telefono, cellulare,
-      linkedin, categoria, tier, fonte, engagement_score, aum_potenziale, note
+      linkedin, categoria, tier, fonte, fonte_acquisizione, stato_sviluppo,
+      engagement_score, aum_potenziale, note
     } = req.body;
 
     if (!nome) {
@@ -91,9 +102,9 @@ router.post('/', (req, res) => {
     }
 
     const result = db.prepare(`
-      INSERT INTO contatti (nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin, categoria, tier, fonte, engagement_score, aum_potenziale, note, data_primo_contatto)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
-    `).run(nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin, categoria, tier || 'C', fonte, engagement_score || 5, aum_potenziale || 0, note);
+      INSERT INTO contatti (nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin, categoria, tier, fonte, fonte_acquisizione, stato_sviluppo, engagement_score, aum_potenziale, note, data_primo_contatto)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
+    `).run(nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin, categoria, tier || 'C', fonte, fonte_acquisizione || fonte, stato_sviluppo || 'Nuovo', engagement_score || 5, aum_potenziale || 0, note);
 
     saveDatabase();
     const newContatto = db.prepare('SELECT * FROM contatti WHERE id = ?').get(result.lastInsertRowid);
@@ -179,8 +190,9 @@ router.get('/:id', (req, res) => {
     const timeline = db.prepare('SELECT * FROM timeline WHERE contatto_id = ? ORDER BY data_interazione DESC').all(req.params.id);
     const chiamate = db.prepare('SELECT * FROM chiamate WHERE contatto_id = ? ORDER BY data_chiamata DESC').all(req.params.id);
     const aum = db.prepare('SELECT * FROM registro_aum WHERE contatto_id = ? ORDER BY data_operazione DESC').all(req.params.id);
+    const interazioni = db.prepare('SELECT * FROM interazioni WHERE contatto_id = ? ORDER BY data_interazione DESC').all(req.params.id);
 
-    res.json({ contatto, pipeline, contratti, timeline, chiamate, aum });
+    res.json({ contatto, pipeline, contratti, timeline, chiamate, aum, interazioni });
   } catch (error) {
     res.status(500).json({ error: 'Errore nel recupero contatto' });
   }
@@ -196,7 +208,8 @@ router.put('/:id', (req, res) => {
 
     const {
       nome, cognome, azienda, ruolo, email, telefono, cellulare,
-      linkedin, categoria, tier, fonte, engagement_score, aum_potenziale, is_cliente, note
+      linkedin, categoria, tier, fonte, fonte_acquisizione, stato_sviluppo,
+      engagement_score, aum_potenziale, is_cliente, note
     } = req.body;
 
     db.prepare(`
@@ -212,6 +225,8 @@ router.put('/:id', (req, res) => {
         categoria = COALESCE(?, categoria),
         tier = COALESCE(?, tier),
         fonte = COALESCE(?, fonte),
+        fonte_acquisizione = COALESCE(?, fonte_acquisizione),
+        stato_sviluppo = COALESCE(?, stato_sviluppo),
         engagement_score = COALESCE(?, engagement_score),
         aum_potenziale = COALESCE(?, aum_potenziale),
         is_cliente = COALESCE(?, is_cliente),
@@ -219,7 +234,7 @@ router.put('/:id', (req, res) => {
         data_ultimo_contatto = date('now'),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin, categoria, tier, fonte, engagement_score, aum_potenziale, is_cliente, note, req.params.id);
+    `).run(nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin, categoria, tier, fonte, fonte_acquisizione, stato_sviluppo, engagement_score, aum_potenziale, is_cliente, note, req.params.id);
 
     saveDatabase();
     const updated = db.prepare('SELECT * FROM contatti WHERE id = ?').get(req.params.id);

@@ -287,16 +287,36 @@
             </button>
           </div>
           <div class="card-body">
-            <div style="display: flex; gap: var(--spacing-md); margin-bottom: var(--spacing-lg);">
-              <input type="text" class="form-input" placeholder="Cerca contatti..." id="search-contatti" style="max-width: 300px;">
-              <select class="form-select" id="filter-tier" style="max-width: 150px;">
+            <div style="display: flex; gap: var(--spacing-md); margin-bottom: var(--spacing-lg); flex-wrap: wrap;">
+              <input type="text" class="form-input" placeholder="Cerca contatti..." id="search-contatti" style="max-width: 250px;">
+              <select class="form-select" id="filter-stato" style="max-width: 150px;">
+                <option value="">Tutti gli Stati</option>
+                <option value="Nuovo">Nuovo</option>
+                <option value="Contattato">Contattato</option>
+                <option value="In Lavorazione">In Lavorazione</option>
+                <option value="Qualificato">Qualificato</option>
+                <option value="In Pipeline">In Pipeline</option>
+                <option value="Cliente">Cliente</option>
+                <option value="Non Interessato">Non Interessato</option>
+              </select>
+              <select class="form-select" id="filter-fonte" style="max-width: 150px;">
+                <option value="">Tutte le Fonti</option>
+                <option value="LinkedIn">LinkedIn</option>
+                <option value="Facebook">Facebook</option>
+                <option value="Instagram">Instagram</option>
+                <option value="Newsletter">Newsletter</option>
+                <option value="Cold Calling">Cold Calling</option>
+                <option value="Referral">Referral</option>
+                <option value="Evento">Evento</option>
+              </select>
+              <select class="form-select" id="filter-tier" style="max-width: 120px;">
                 <option value="">Tutti i Tier</option>
                 <option value="A+">A+ (VIP)</option>
                 <option value="A">A (HOT)</option>
                 <option value="B">B (WARM)</option>
                 <option value="C">C (COLD)</option>
               </select>
-              <select class="form-select" id="filter-cliente" style="max-width: 150px;">
+              <select class="form-select" id="filter-cliente" style="max-width: 130px;">
                 <option value="">Tutti</option>
                 <option value="true">Solo Clienti</option>
                 <option value="false">Solo Prospect</option>
@@ -307,15 +327,16 @@
                 <tr>
                   <th>Nome</th>
                   <th>Azienda</th>
-                  <th>Categoria</th>
+                  <th>Stato</th>
+                  <th>Fonte</th>
                   <th>Tier</th>
                   <th>Engagement</th>
-                  <th>AUM Potenziale</th>
+                  <th>AUM Pot.</th>
                   <th>Azioni</th>
                 </tr>
               </thead>
               <tbody id="contatti-table">
-                <tr><td colspan="7" class="text-center"><div class="spinner"></div></td></tr>
+                <tr><td colspan="8" class="text-center"><div class="spinner"></div></td></tr>
               </tbody>
             </table>
           </div>

@@ -176,6 +176,8 @@ const initializeDatabase = async () => {
       categoria TEXT,
       tier TEXT DEFAULT 'C',
       fonte TEXT,
+      fonte_acquisizione TEXT,
+      stato_sviluppo TEXT DEFAULT 'Nuovo',
       engagement_score INTEGER DEFAULT 5,
       aum_potenziale REAL DEFAULT 0,
       is_cliente INTEGER DEFAULT 0,
@@ -186,6 +188,14 @@ const initializeDatabase = async () => {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Aggiungi colonne se non esistono (per aggiornamento db esistente)
+  try {
+    db.exec(`ALTER TABLE contatti ADD COLUMN fonte_acquisizione TEXT`);
+  } catch (e) { /* colonna già esiste */ }
+  try {
+    db.exec(`ALTER TABLE contatti ADD COLUMN stato_sviluppo TEXT DEFAULT 'Nuovo'`);
+  } catch (e) { /* colonna già esiste */ }
 
   // Tabella Pipeline
   db.exec(`
@@ -297,6 +307,28 @@ const initializeDatabase = async () => {
       documento_url TEXT,
       data_interazione DATETIME DEFAULT CURRENT_TIMESTAMP,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Tabella Interazioni/Touchpoints - Tracciamento dettagliato percorso contatto
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS interazioni (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contatto_id INTEGER NOT NULL,
+      pipeline_id INTEGER,
+      chiamata_id INTEGER,
+      tipo TEXT NOT NULL,
+      canale TEXT,
+      oggetto TEXT,
+      descrizione TEXT,
+      esito TEXT,
+      data_interazione DATETIME DEFAULT CURRENT_TIMESTAMP,
+      data_prossima_azione DATE,
+      prossima_azione TEXT,
+      funnel_assegnato TEXT,
+      email_numero INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (contatto_id) REFERENCES contatti(id)
     )
   `);
 

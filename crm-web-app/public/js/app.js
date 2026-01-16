@@ -435,10 +435,14 @@ async function loadContatti() {
     const tier = document.getElementById('filter-tier')?.value;
     const isCliente = document.getElementById('filter-cliente')?.value;
     const search = document.getElementById('search-contatti')?.value;
+    const stato = document.getElementById('filter-stato')?.value;
+    const fonte = document.getElementById('filter-fonte')?.value;
 
     if (tier) params.append('tier', tier);
     if (isCliente) params.append('is_cliente', isCliente);
     if (search) params.append('search', search);
+    if (stato) params.append('stato_sviluppo', stato);
+    if (fonte) params.append('fonte_acquisizione', fonte);
 
     const data = await fetchAPI(`/contatti?${params}`);
     renderContattiTable(data.contatti);
@@ -451,9 +455,19 @@ function renderContattiTable(contatti) {
   const tbody = document.getElementById('contatti-table');
 
   if (!contatti || contatti.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Nessun contatto trovato</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Nessun contatto trovato</td></tr>';
     return;
   }
+
+  const statoColors = {
+    'Nuovo': 'info',
+    'Contattato': 'primary',
+    'In Lavorazione': 'warning',
+    'Qualificato': 'success',
+    'In Pipeline': 'purple',
+    'Cliente': 'success',
+    'Non Interessato': 'danger'
+  };
 
   tbody.innerHTML = contatti.map(c => `
     <tr>
@@ -469,13 +483,22 @@ function renderContattiTable(contatti) {
         </div>
       </td>
       <td>${c.azienda || '-'}</td>
-      <td>${c.categoria || '-'}</td>
+      <td>
+        <span class="status-badge ${statoColors[c.stato_sviluppo] || 'info'}" style="font-size: 11px;">
+          ${c.stato_sviluppo || 'Nuovo'}
+        </span>
+      </td>
+      <td>
+        <span style="font-size: 12px; color: var(--text-secondary);">
+          ${c.fonte_acquisizione || c.fonte || '-'}
+        </span>
+      </td>
       <td><span class="status-badge ${c.tier === 'A+' ? 'danger' : c.tier === 'A' ? 'warning' : 'info'}">${c.tier}</span></td>
       <td>${c.engagement_score}/10</td>
       <td>${formatCurrency(c.aum_potenziale)}</td>
       <td>
-        <button class="btn btn-secondary" onclick="editContatto(${c.id})" style="padding: 4px 8px;">
-          <i class="bi bi-pencil"></i>
+        <button class="btn btn-secondary" onclick="editContatto(${c.id})" style="padding: 4px 8px;" title="Dettagli">
+          <i class="bi bi-eye"></i>
         </button>
       </td>
     </tr>
@@ -937,6 +960,10 @@ function showAddContatto() {
       </div>
       <div class="form-row">
         <div class="form-group">
+          <label class="form-label">LinkedIn</label>
+          <input type="text" class="form-input" name="linkedin" placeholder="URL profilo LinkedIn">
+        </div>
+        <div class="form-group">
           <label class="form-label">Categoria</label>
           <select class="form-select" name="categoria">
             <option value="">Seleziona...</option>
@@ -952,21 +979,16 @@ function showAddContatto() {
             <option value="Altro">Altro</option>
           </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">Tier</label>
-          <select class="form-select" name="tier">
-            <option value="C">C (Cold)</option>
-            <option value="B">B (Warm)</option>
-            <option value="A">A (Hot)</option>
-            <option value="A+">A+ (VIP)</option>
-          </select>
-        </div>
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Fonte</label>
-          <select class="form-select" name="fonte">
+          <label class="form-label">Fonte Acquisizione</label>
+          <select class="form-select" name="fonte_acquisizione">
             <option value="">Seleziona...</option>
+            <option value="LinkedIn">LinkedIn</option>
+            <option value="Facebook">Facebook</option>
+            <option value="Instagram">Instagram</option>
+            <option value="Google Ads">Google Ads</option>
             <option value="Newsletter">Newsletter</option>
             <option value="Cold Calling">Cold Calling</option>
             <option value="Partnership">Partnership</option>
@@ -974,6 +996,32 @@ function showAddContatto() {
             <option value="TFR Entry">TFR Entry</option>
             <option value="Percorso Formativo">Percorso Formativo</option>
             <option value="Referral">Referral</option>
+            <option value="Sito Web">Sito Web</option>
+            <option value="Webinar">Webinar</option>
+            <option value="Altro">Altro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stato Sviluppo</label>
+          <select class="form-select" name="stato_sviluppo">
+            <option value="Nuovo">Nuovo</option>
+            <option value="Contattato">Contattato</option>
+            <option value="In Lavorazione">In Lavorazione</option>
+            <option value="Qualificato">Qualificato</option>
+            <option value="In Pipeline">In Pipeline</option>
+            <option value="Cliente">Cliente</option>
+            <option value="Non Interessato">Non Interessato</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Tier</label>
+          <select class="form-select" name="tier">
+            <option value="C">C (Cold)</option>
+            <option value="B">B (Warm)</option>
+            <option value="A">A (Hot)</option>
+            <option value="A+">A+ (VIP)</option>
           </select>
         </div>
         <div class="form-group">
@@ -1295,87 +1343,172 @@ async function editContatto(id) {
   try {
     const data = await fetchAPI(`/contatti/${id}`);
     const c = data.contatto;
+    const interazioni = data.interazioni || [];
+    const chiamate = data.chiamate || [];
+
+    // Combina interazioni e chiamate per la timeline
+    const timeline = [
+      ...interazioni.map(i => ({...i, source: 'interazione'})),
+      ...chiamate.map(ch => ({
+        ...ch,
+        tipo: 'Chiamata',
+        descrizione: ch.note,
+        esito: ch.esito,
+        data_interazione: ch.data_chiamata,
+        source: 'chiamata'
+      }))
+    ].sort((a, b) => new Date(b.data_interazione || b.created_at) - new Date(a.data_interazione || a.created_at));
+
+    const fontiOptions = ['LinkedIn','Facebook','Instagram','Google Ads','Newsletter','Cold Calling','Partnership','Evento Libro','TFR Entry','Percorso Formativo','Referral','Sito Web','Webinar','Altro'];
+    const statiOptions = ['Nuovo','Contattato','In Lavorazione','Qualificato','In Pipeline','Cliente','Non Interessato'];
 
     const content = `
-      <form id="edit-contatto-form">
-        <input type="hidden" name="id" value="${id}">
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Nome *</label>
-            <input type="text" class="form-input" name="nome" value="${c.nome || ''}" required>
+      <div style="display: flex; gap: var(--spacing-lg);">
+        <!-- Colonna Form -->
+        <div style="flex: 1; min-width: 350px;">
+          <form id="edit-contatto-form">
+            <input type="hidden" name="id" value="${id}">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Nome *</label>
+                <input type="text" class="form-input" name="nome" value="${c.nome || ''}" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Cognome</label>
+                <input type="text" class="form-input" name="cognome" value="${c.cognome || ''}">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-input" name="email" value="${c.email || ''}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Telefono</label>
+                <input type="tel" class="form-input" name="telefono" value="${c.telefono || ''}">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Azienda</label>
+                <input type="text" class="form-input" name="azienda" value="${c.azienda || ''}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Ruolo</label>
+                <input type="text" class="form-input" name="ruolo" value="${c.ruolo || ''}">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Fonte Acquisizione</label>
+                <select class="form-select" name="fonte_acquisizione">
+                  <option value="">Seleziona...</option>
+                  ${fontiOptions.map(f => `<option value="${f}" ${c.fonte_acquisizione === f || c.fonte === f ? 'selected' : ''}>${f}</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Stato Sviluppo</label>
+                <select class="form-select" name="stato_sviluppo">
+                  ${statiOptions.map(s => `<option value="${s}" ${c.stato_sviluppo === s ? 'selected' : ''}>${s}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Categoria</label>
+                <select class="form-select" name="categoria">
+                  <option value="">Seleziona...</option>
+                  ${['Imprenditore','Commercialista','Avvocato','Medico','Odontoiatra','Farmacista','Notaio','Manager','Dirigente','Altro'].map(cat =>
+                    `<option value="${cat}" ${c.categoria === cat ? 'selected' : ''}>${cat}</option>`
+                  ).join('')}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Tier</label>
+                <select class="form-select" name="tier">
+                  ${['C','B','A','A+'].map(t =>
+                    `<option value="${t}" ${c.tier === t ? 'selected' : ''}>${t}</option>`
+                  ).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">AUM Potenziale</label>
+                <input type="number" class="form-input" name="aum_potenziale" value="${c.aum_potenziale || 0}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Engagement Score</label>
+                <input type="number" class="form-input" name="engagement_score" value="${c.engagement_score || 5}" min="1" max="10">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">
+                <input type="checkbox" name="is_cliente" ${c.is_cliente ? 'checked' : ''}> È cliente attivo
+              </label>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Note</label>
+              <textarea class="form-textarea" name="note">${c.note || ''}</textarea>
+            </div>
+          </form>
+        </div>
+
+        <!-- Colonna Azioni e Timeline -->
+        <div style="flex: 1; min-width: 300px; border-left: 1px solid var(--border-color); padding-left: var(--spacing-lg);">
+          <h4 style="margin-bottom: var(--spacing-md);">Azioni Rapide</h4>
+          <div style="display: flex; flex-wrap: wrap; gap: var(--spacing-sm); margin-bottom: var(--spacing-lg);">
+            <button type="button" class="btn btn-primary" onclick="registraChiamataContatto(${id})">
+              <i class="bi bi-telephone"></i> Chiamata
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="registraEmailContatto(${id})">
+              <i class="bi bi-envelope"></i> Email
+            </button>
+            <button type="button" class="btn btn-warning" onclick="assegnaFunnelContatto(${id})">
+              <i class="bi bi-diagram-3"></i> Funnel
+            </button>
+            <button type="button" class="btn btn-success" onclick="spostaPipelineContatto(${id}, '${c.nome} ${c.cognome || ''}', ${c.aum_potenziale || 0})">
+              <i class="bi bi-funnel"></i> Pipeline
+            </button>
           </div>
-          <div class="form-group">
-            <label class="form-label">Cognome</label>
-            <input type="text" class="form-input" name="cognome" value="${c.cognome || ''}">
+
+          <h4 style="margin-bottom: var(--spacing-md);">Timeline Interazioni</h4>
+          <div style="max-height: 300px; overflow-y: auto;">
+            ${timeline.length === 0 ? '<p class="text-muted">Nessuna interazione registrata</p>' :
+              timeline.map(t => `
+                <div style="display: flex; gap: var(--spacing-sm); padding: var(--spacing-sm); border-bottom: 1px solid var(--border-color);">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--${
+                    t.tipo?.includes('Chiamata') ? 'primary' :
+                    t.tipo === 'Email' ? 'info' :
+                    t.tipo === 'Funnel Email' ? 'warning' :
+                    t.tipo === 'Pipeline' ? 'success' : 'secondary'
+                  }); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <i class="bi bi-${
+                      t.tipo?.includes('Chiamata') ? 'telephone' :
+                      t.tipo === 'Email' ? 'envelope' :
+                      t.tipo === 'Funnel Email' ? 'diagram-3' :
+                      t.tipo === 'Pipeline' ? 'funnel' : 'clock'
+                    }" style="color: white; font-size: 14px;"></i>
+                  </div>
+                  <div style="flex: 1;">
+                    <div style="font-weight: 500; font-size: 13px;">${t.tipo || 'Interazione'}</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">${t.descrizione || t.esito || ''}</div>
+                    <div style="font-size: 11px; color: var(--text-tertiary);">${formatDate(t.data_interazione || t.created_at)}</div>
+                  </div>
+                </div>
+              `).join('')}
           </div>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Azienda</label>
-            <input type="text" class="form-input" name="azienda" value="${c.azienda || ''}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Ruolo</label>
-            <input type="text" class="form-input" name="ruolo" value="${c.ruolo || ''}">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Email</label>
-            <input type="email" class="form-input" name="email" value="${c.email || ''}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Telefono</label>
-            <input type="tel" class="form-input" name="telefono" value="${c.telefono || ''}">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Categoria</label>
-            <select class="form-select" name="categoria">
-              <option value="">Seleziona...</option>
-              ${['Imprenditore','Commercialista','Avvocato','Medico','Odontoiatra','Farmacista','Notaio','Manager','Dirigente','Altro'].map(cat =>
-                `<option value="${cat}" ${c.categoria === cat ? 'selected' : ''}>${cat}</option>`
-              ).join('')}
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Tier</label>
-            <select class="form-select" name="tier">
-              ${['C','B','A','A+'].map(t =>
-                `<option value="${t}" ${c.tier === t ? 'selected' : ''}>${t}</option>`
-              ).join('')}
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">AUM Potenziale</label>
-            <input type="number" class="form-input" name="aum_potenziale" value="${c.aum_potenziale || 0}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Engagement Score</label>
-            <input type="number" class="form-input" name="engagement_score" value="${c.engagement_score || 5}" min="1" max="10">
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">
-            <input type="checkbox" name="is_cliente" ${c.is_cliente ? 'checked' : ''}> È cliente attivo
-          </label>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Note</label>
-          <textarea class="form-textarea" name="note">${c.note || ''}</textarea>
-        </div>
-        <div style="border-top: 1px solid var(--border-color); padding-top: var(--spacing-md); margin-top: var(--spacing-md);">
-          <button type="button" class="btn btn-danger" onclick="deleteContatto(${id})" style="float: left;">
-            <i class="bi bi-trash"></i> Elimina Contatto
-          </button>
-        </div>
-      </form>
+      </div>
+
+      <div style="border-top: 1px solid var(--border-color); padding-top: var(--spacing-md); margin-top: var(--spacing-md);">
+        <button type="button" class="btn btn-danger" onclick="deleteContatto(${id})" style="float: left;">
+          <i class="bi bi-trash"></i> Elimina Contatto
+        </button>
+      </div>
     `;
 
-    openModal('Modifica Contatto', content, async () => {
+    openModal('Dettaglio Contatto: ' + c.nome + ' ' + (c.cognome || ''), content, async () => {
       const form = document.getElementById('edit-contatto-form');
       const formData = new FormData(form);
       const data = Object.fromEntries(formData);
@@ -1392,9 +1525,195 @@ async function editContatto(id) {
         alert('Errore nel salvataggio');
       }
     });
+
+    // Aumenta larghezza modal per contenere il layout a due colonne
+    document.querySelector('.modal').style.maxWidth = '900px';
+
   } catch (error) {
+    console.error('Errore:', error);
     alert('Errore nel caricamento del contatto');
   }
+}
+
+// ========== FUNZIONI INTERAZIONI CONTATTO ==========
+
+async function registraChiamataContatto(contattoId) {
+  const content = `
+    <form id="chiamata-contatto-form">
+      <div class="form-group">
+        <label class="form-label">Esito</label>
+        <select class="form-select" name="esito">
+          <option value="">Seleziona...</option>
+          <option value="Interessato">Interessato</option>
+          <option value="Non Interessato">Non Interessato</option>
+          <option value="Richiamare">Richiamare</option>
+          <option value="No Risposta">No Risposta</option>
+          <option value="Appuntamento Fissato">Appuntamento Fissato</option>
+          <option value="Info Richieste">Info Richieste</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data Follow-up</label>
+        <input type="date" class="form-input" name="data_follow_up">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Note</label>
+        <textarea class="form-textarea" name="note"></textarea>
+      </div>
+    </form>
+  `;
+
+  // Chiudi modal precedente
+  closeModal();
+
+  setTimeout(() => {
+    openModal('Registra Chiamata', content, async () => {
+      const form = document.getElementById('chiamata-contatto-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData);
+      data.contatto_id = contattoId;
+
+      try {
+        await fetchAPI('/interazioni/registra-chiamata', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        closeModal();
+        alert('Chiamata registrata con successo');
+        editContatto(contattoId); // Riapri dettaglio
+      } catch (error) {
+        alert('Errore nella registrazione');
+      }
+    });
+  }, 100);
+}
+
+async function registraEmailContatto(contattoId) {
+  const content = `
+    <form id="email-contatto-form">
+      <div class="form-group">
+        <label class="form-label">Oggetto</label>
+        <input type="text" class="form-input" name="oggetto" placeholder="Oggetto email">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Descrizione/Note</label>
+        <textarea class="form-textarea" name="descrizione" placeholder="Contenuto o note sull'email"></textarea>
+      </div>
+    </form>
+  `;
+
+  closeModal();
+
+  setTimeout(() => {
+    openModal('Registra Email Inviata', content, async () => {
+      const form = document.getElementById('email-contatto-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData);
+      data.contatto_id = contattoId;
+
+      try {
+        await fetchAPI('/interazioni/registra-email', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        closeModal();
+        alert('Email registrata con successo');
+        editContatto(contattoId);
+      } catch (error) {
+        alert('Errore nella registrazione');
+      }
+    });
+  }, 100);
+}
+
+async function assegnaFunnelContatto(contattoId) {
+  const content = `
+    <form id="funnel-contatto-form">
+      <div class="form-group">
+        <label class="form-label">Nome Funnel *</label>
+        <select class="form-select" name="funnel_nome" required>
+          <option value="">Seleziona funnel...</option>
+          <option value="Benvenuto">Benvenuto</option>
+          <option value="Nurturing Base">Nurturing Base</option>
+          <option value="Nurturing Avanzato">Nurturing Avanzato</option>
+          <option value="Re-engagement">Re-engagement</option>
+          <option value="Promo Speciale">Promo Speciale</option>
+          <option value="Post Evento">Post Evento</option>
+          <option value="Follow-up Webinar">Follow-up Webinar</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Note</label>
+        <textarea class="form-textarea" name="descrizione" placeholder="Note sull'assegnazione"></textarea>
+      </div>
+    </form>
+  `;
+
+  closeModal();
+
+  setTimeout(() => {
+    openModal('Assegna Funnel Email', content, async () => {
+      const form = document.getElementById('funnel-contatto-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData);
+      data.contatto_id = contattoId;
+
+      if (!data.funnel_nome) {
+        alert('Seleziona un funnel');
+        return;
+      }
+
+      try {
+        await fetchAPI('/interazioni/assegna-funnel', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        closeModal();
+        alert('Funnel assegnato con successo');
+        editContatto(contattoId);
+      } catch (error) {
+        alert('Errore nell\'assegnazione');
+      }
+    });
+  }, 100);
+}
+
+async function spostaPipelineContatto(contattoId, nomeContatto, aumPotenziale) {
+  const content = `
+    <form id="pipeline-contatto-form">
+      <div class="form-group">
+        <label class="form-label">Nome Deal</label>
+        <input type="text" class="form-input" name="nome_deal" value="${nomeContatto} - Opportunità">
+      </div>
+      <div class="form-group">
+        <label class="form-label">AUM Previsto</label>
+        <input type="number" class="form-input" name="aum_previsto" value="${aumPotenziale}">
+      </div>
+    </form>
+  `;
+
+  closeModal();
+
+  setTimeout(() => {
+    openModal('Sposta in Pipeline', content, async () => {
+      const form = document.getElementById('pipeline-contatto-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData);
+      data.contatto_id = contattoId;
+
+      try {
+        await fetchAPI('/interazioni/sposta-pipeline', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        closeModal();
+        alert('Contatto spostato in Pipeline con successo!');
+        loadContatti();
+      } catch (error) {
+        alert('Errore nello spostamento');
+      }
+    });
+  }, 100);
 }
 
 async function editDeal(id) {
@@ -2021,6 +2340,8 @@ function refreshData() {
 document.getElementById('search-contatti')?.addEventListener('input', debounce(loadContatti, 300));
 document.getElementById('filter-tier')?.addEventListener('change', loadContatti);
 document.getElementById('filter-cliente')?.addEventListener('change', loadContatti);
+document.getElementById('filter-stato')?.addEventListener('change', loadContatti);
+document.getElementById('filter-fonte')?.addEventListener('change', loadContatti);
 
 function debounce(func, wait) {
   let timeout;
