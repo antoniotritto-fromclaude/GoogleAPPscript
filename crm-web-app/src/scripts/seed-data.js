@@ -9,6 +9,26 @@ async function seedDatabase() {
   // Inizializza database
   await initializeDatabase();
 
+  console.log('🧹 Pulizia tabelle esistenti...');
+
+  // Pulisci tutte le tabelle prima di inserire nuovi dati
+  const tablesToClear = [
+    'funnel_settimanale',
+    'canali_acquisizione',
+    'timeline',
+    'chiamate',
+    'registro_aum',
+    'contratti',
+    'pipeline',
+    'contatti',
+    'configurazione'
+  ];
+
+  tablesToClear.forEach(table => {
+    db.prepare(`DELETE FROM ${table}`).run();
+  });
+  console.log('✅ Tabelle pulite');
+
   console.log('🌱 Popolamento dati di esempio...');
 
   // Configurazione di base
