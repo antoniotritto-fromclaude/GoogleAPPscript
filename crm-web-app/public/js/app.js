@@ -2355,18 +2355,94 @@ async function loadEmail() {
     // Carica configurazione email
     const config = await fetchAPI('/email/config');
 
+    // Check OAuth status first
+    try {
+      const oauthStatus = await fetchAPI('/email/oauth/status');
+      if (oauthStatus.connected) {
+        // OAuth connected
+        document.getElementById('email-status').textContent = 'Connesso';
+        document.getElementById('email-status').className = 'status-badge success';
+        document.getElementById('gmail-connect-btn').style.display = 'none';
+        document.getElementById('gmail-connected-email').style.display = 'inline';
+        document.getElementById('gmail-email-display').textContent = oauthStatus.email || config.address;
+        document.getElementById('gmail-disconnect-btn').style.display = 'inline-block';
+        return;
+      }
+    } catch (e) {
+      console.log('OAuth status check:', e.message);
+    }
+
+    // Fallback to SMTP config display
     if (config.address) {
       document.getElementById('email-config-address').value = config.address;
       document.getElementById('email-config-nome').value = config.nome_mittente || '';
 
       if (config.password_configured) {
-        document.getElementById('email-status').textContent = 'Configurato';
+        document.getElementById('email-status').textContent = 'SMTP Configurato';
         document.getElementById('email-status').className = 'status-badge success';
-        document.getElementById('email-config-password').placeholder = '••••••••••••••••';
+        document.getElementById('email-config-password').placeholder = '****************';
       }
     }
+
+    // Reset OAuth UI
+    document.getElementById('gmail-connect-btn').style.display = 'inline-flex';
+    document.getElementById('gmail-connected-email').style.display = 'none';
+    document.getElementById('gmail-disconnect-btn').style.display = 'none';
   } catch (error) {
     console.error('Errore caricamento config email:', error);
+  }
+}
+
+// OAuth2 Gmail Functions
+async function connectGmailOAuth() {
+  try {
+    const result = await fetchAPI('/email/oauth/url');
+
+    if (result.error) {
+      alert('OAuth non configurato sul server. Contatta l\'amministratore per configurare le credenziali Google Cloud.');
+      return;
+    }
+
+    // Open popup for OAuth
+    const width = 500;
+    const height = 600;
+    const left = (window.innerWidth - width) / 2;
+    const top = (window.innerHeight - height) / 2;
+
+    const popup = window.open(
+      result.url,
+      'Gmail OAuth',
+      `width=${width},height=${height},left=${left},top=${top}`
+    );
+
+    // Listen for message from popup
+    window.addEventListener('message', function handler(event) {
+      if (event.data.type === 'gmail-oauth-success') {
+        alert('Gmail connesso con successo: ' + event.data.email);
+        loadEmail();
+        window.removeEventListener('message', handler);
+      } else if (event.data.type === 'gmail-oauth-error') {
+        alert('Errore durante la connessione: ' + event.data.error);
+        window.removeEventListener('message', handler);
+      }
+    });
+
+  } catch (error) {
+    alert('Errore: ' + (error.hint || error.message));
+  }
+}
+
+async function disconnectGmailOAuth() {
+  if (!confirm('Disconnettere Gmail? Dovrai riconnetterti per inviare email.')) {
+    return;
+  }
+
+  try {
+    await fetchAPI('/email/oauth/disconnect', { method: 'POST' });
+    alert('Gmail disconnesso');
+    loadEmail();
+  } catch (error) {
+    alert('Errore: ' + error.message);
   }
 }
 

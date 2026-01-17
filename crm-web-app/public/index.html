@@ -792,36 +792,64 @@
           </div>
         </div>
 
-        <!-- Configurazione Gmail -->
+        <!-- Connessione Gmail OAuth2 -->
         <div class="card" style="margin-bottom: var(--spacing-lg);">
           <div class="card-header">
-            <h3 class="card-title">Configurazione Gmail SMTP</h3>
-            <span id="email-status" class="status-badge info">Non configurato</span>
+            <h3 class="card-title">Connessione Gmail</h3>
+            <span id="email-status" class="status-badge info">Non connesso</span>
           </div>
           <div class="card-body">
-            <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">Email Gmail</label>
-                <input type="email" class="form-input" id="email-config-address" placeholder="tuaemail@gmail.com">
+            <!-- OAuth2 Connection (Recommended) -->
+            <div id="gmail-oauth-section">
+              <div style="display: flex; align-items: center; gap: var(--spacing-md); margin-bottom: var(--spacing-md);">
+                <button class="btn btn-primary" id="gmail-connect-btn" onclick="connectGmailOAuth()" style="background: #4285f4;">
+                  <i class="bi bi-google"></i> Connetti con Gmail
+                </button>
+                <span id="gmail-connected-email" style="color: var(--success); display: none;">
+                  <i class="bi bi-check-circle"></i> <span id="gmail-email-display"></span>
+                </span>
+                <button class="btn btn-secondary btn-sm" id="gmail-disconnect-btn" onclick="disconnectGmailOAuth()" style="display: none;">
+                  <i class="bi bi-x-circle"></i> Disconnetti
+                </button>
               </div>
-              <div class="form-group">
-                <label class="form-label">App Password</label>
-                <input type="password" class="form-input" id="email-config-password" placeholder="xxxx xxxx xxxx xxxx">
-                <small class="text-muted">Genera da: Google Account → Sicurezza → Password per le app</small>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Nome Mittente</label>
-                <input type="text" class="form-input" id="email-config-nome" placeholder="Antonio Tritto">
-              </div>
+              <p class="text-muted" style="font-size: 13px; margin-bottom: var(--spacing-md);">
+                Metodo consigliato: clicca "Connetti con Gmail" per autorizzare l'accesso in modo sicuro senza inserire password.
+              </p>
             </div>
-            <div style="display: flex; gap: var(--spacing-sm);">
-              <button class="btn btn-primary" onclick="saveEmailConfig()">
-                <i class="bi bi-save"></i> Salva Configurazione
-              </button>
-              <button class="btn btn-secondary" onclick="testEmailConnection()">
-                <i class="bi bi-plug"></i> Test Connessione
-              </button>
-            </div>
+
+            <hr style="border-color: var(--border); margin: var(--spacing-md) 0;">
+
+            <!-- SMTP Fallback (Advanced) -->
+            <details id="smtp-config-details">
+              <summary style="cursor: pointer; color: var(--text-secondary); font-size: 14px; margin-bottom: var(--spacing-sm);">
+                <i class="bi bi-gear"></i> Configurazione SMTP avanzata (alternativa)
+              </summary>
+              <div style="margin-top: var(--spacing-md);">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="form-label">Email Gmail</label>
+                    <input type="email" class="form-input" id="email-config-address" placeholder="tuaemail@gmail.com">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">App Password</label>
+                    <input type="password" class="form-input" id="email-config-password" placeholder="xxxx xxxx xxxx xxxx">
+                    <small class="text-muted">Genera da: Google Account → Sicurezza → Password per le app</small>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Nome Mittente</label>
+                    <input type="text" class="form-input" id="email-config-nome" placeholder="Antonio Tritto">
+                  </div>
+                </div>
+                <div style="display: flex; gap: var(--spacing-sm);">
+                  <button class="btn btn-secondary" onclick="saveEmailConfig()">
+                    <i class="bi bi-save"></i> Salva SMTP
+                  </button>
+                  <button class="btn btn-secondary" onclick="testEmailConnection()">
+                    <i class="bi bi-plug"></i> Test Connessione
+                  </button>
+                </div>
+              </div>
+            </details>
           </div>
         </div>
 

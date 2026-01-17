@@ -1,6 +1,6 @@
 /**
  * Email API Routes
- * Gestione invio email tramite Gmail SMTP
+ * Gestione invio email tramite Gmail OAuth2 o SMTP
  *
  * LIMITI GOOGLE GMAIL:
  * - 500 email/giorno per account Gmail normale
@@ -11,7 +11,25 @@
 const express = require('express');
 const router = express.Router();
 const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
 const { db, saveDatabase } = require('../models/database');
+
+// OAuth2 Configuration
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/email/oauth/callback';
+
+const oauth2Client = new google.auth.OAuth2(
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  REDIRECT_URI
+);
+
+// Scopes needed for sending email
+const SCOPES = [
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/userinfo.email'
+];
 
 // Variabili per gestire lo stato dell'invio bulk
 let bulkEmailStatus = {
@@ -75,6 +93,185 @@ Private Banker`
   }
 };
 
+// ========== OAUTH2 ROUTES ==========
+
+// GET /api/email/oauth/url - Ottieni URL per autorizzazione Google
+router.get('/oauth/url', (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    return res.status(400).json({
+      error: 'OAuth non configurato',
+      hint: 'Configura GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET nelle variabili d\'ambiente'
+    });
+  }
+
+  const authUrl = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: SCOPES,
+    prompt: 'consent' // Forza il refresh token
+  });
+
+  res.json({ url: authUrl });
+});
+
+// GET /api/email/oauth/callback - Callback OAuth Google
+router.get('/oauth/callback', async (req, res) => {
+  const { code, error } = req.query;
+
+  if (error) {
+    return res.send(`
+      <html>
+        <body>
+          <script>
+            window.opener.postMessage({ type: 'gmail-oauth-error', error: '${error}' }, '*');
+            window.close();
+          </script>
+          <p>Errore: ${error}. Puoi chiudere questa finestra.</p>
+        </body>
+      </html>
+    `);
+  }
+
+  if (!code) {
+    return res.status(400).send('Codice mancante');
+  }
+
+  try {
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
+
+    // Ottieni info utente
+    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+    const userInfo = await oauth2.userinfo.get();
+    const email = userInfo.data.email;
+
+    // Salva tokens nel database
+    const upsert = (chiave, valore) => {
+      try {
+        const existing = db.prepare('SELECT id FROM configurazione WHERE chiave = ?').get(chiave);
+        if (existing) {
+          db.prepare('UPDATE configurazione SET valore = ?, updated_at = CURRENT_TIMESTAMP WHERE chiave = ?').run(valore, chiave);
+        } else {
+          db.prepare('INSERT INTO configurazione (chiave, valore, tipo) VALUES (?, ?, ?)').run(chiave, valore, 'string');
+        }
+      } catch (e) {
+        console.error('Errore upsert:', e.message);
+      }
+    };
+
+    upsert('email_oauth_access_token', tokens.access_token);
+    if (tokens.refresh_token) {
+      upsert('email_oauth_refresh_token', tokens.refresh_token);
+    }
+    upsert('email_oauth_expiry', tokens.expiry_date?.toString() || '');
+    upsert('email_address', email);
+    upsert('email_auth_method', 'oauth2');
+
+    saveDatabase();
+
+    // Chiudi popup e notifica parent
+    res.send(`
+      <html>
+        <body>
+          <script>
+            window.opener.postMessage({ type: 'gmail-oauth-success', email: '${email}' }, '*');
+            window.close();
+          </script>
+          <p>Connessione riuscita! Puoi chiudere questa finestra.</p>
+        </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Errore OAuth callback:', error);
+    res.send(`
+      <html>
+        <body>
+          <script>
+            window.opener.postMessage({ type: 'gmail-oauth-error', error: 'token_error' }, '*');
+            window.close();
+          </script>
+          <p>Errore durante l'autorizzazione. Puoi chiudere questa finestra.</p>
+        </body>
+      </html>
+    `);
+  }
+});
+
+// GET /api/email/oauth/status - Verifica stato connessione OAuth
+router.get('/oauth/status', async (req, res) => {
+  try {
+    const config = getOAuthConfig();
+
+    if (!config.refresh_token && !config.access_token) {
+      return res.json({
+        connected: false,
+        method: null
+      });
+    }
+
+    // Verifica se il token è valido
+    oauth2Client.setCredentials({
+      access_token: config.access_token,
+      refresh_token: config.refresh_token
+    });
+
+    try {
+      // Prova a refreshare il token
+      if (config.refresh_token) {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+
+        // Aggiorna token nel database
+        const upsert = (chiave, valore) => {
+          const existing = db.prepare('SELECT id FROM configurazione WHERE chiave = ?').get(chiave);
+          if (existing) {
+            db.prepare('UPDATE configurazione SET valore = ?, updated_at = CURRENT_TIMESTAMP WHERE chiave = ?').run(valore, chiave);
+          } else {
+            db.prepare('INSERT INTO configurazione (chiave, valore, tipo) VALUES (?, ?, ?)').run(chiave, valore, 'string');
+          }
+        };
+
+        upsert('email_oauth_access_token', credentials.access_token);
+        if (credentials.refresh_token) {
+          upsert('email_oauth_refresh_token', credentials.refresh_token);
+        }
+        saveDatabase();
+      }
+
+      return res.json({
+        connected: true,
+        method: 'oauth2',
+        email: config.email
+      });
+    } catch (tokenError) {
+      console.error('Token refresh failed:', tokenError.message);
+      return res.json({
+        connected: false,
+        method: null,
+        error: 'Token scaduto, riconnetti Gmail'
+      });
+    }
+  } catch (error) {
+    console.error('Errore status OAuth:', error);
+    res.json({ connected: false, error: error.message });
+  }
+});
+
+// POST /api/email/oauth/disconnect - Disconnetti Gmail OAuth
+router.post('/oauth/disconnect', (req, res) => {
+  try {
+    // Rimuovi tokens dal database
+    db.prepare("DELETE FROM configurazione WHERE chiave LIKE 'email_oauth_%'").run();
+    db.prepare("DELETE FROM configurazione WHERE chiave = 'email_auth_method'").run();
+    saveDatabase();
+
+    res.json({ success: true, message: 'Gmail disconnesso' });
+  } catch (error) {
+    console.error('Errore disconnect:', error);
+    res.status(500).json({ error: 'Errore durante la disconnessione' });
+  }
+});
+
+// ========== TEMPLATE ROUTES ==========
+
 // GET /api/email/templates - Lista template disponibili
 router.get('/templates', (req, res) => {
   const templates = Object.entries(emailTemplates).map(([id, template]) => ({
@@ -95,7 +292,9 @@ router.get('/template/:id', (req, res) => {
   res.json({ id: req.params.id, ...template });
 });
 
-// GET /api/email/config - Recupera configurazione email (senza password)
+// ========== CONFIG ROUTES (SMTP legacy) ==========
+
+// GET /api/email/config - Recupera configurazione email
 router.get('/config', (req, res) => {
   try {
     let config = [];
@@ -105,32 +304,34 @@ router.get('/config', (req, res) => {
         WHERE chiave LIKE 'email_%'
       `).all();
     } catch (e) {
-      // Tabella potrebbe non esistere ancora
       console.log('Configurazione email non ancora inizializzata');
     }
 
     const configObj = {};
     if (config && config.length > 0) {
       config.forEach(c => {
-        // Non restituire la password
-        if (c.chiave !== 'email_password') {
+        // Non restituire password o tokens sensibili
+        if (!c.chiave.includes('password') && !c.chiave.includes('token')) {
           configObj[c.chiave.replace('email_', '')] = c.valore;
         }
       });
 
-      // Indica se la password è configurata
+      // Indica se configurata
       const hasPassword = config.some(c => c.chiave === 'email_password' && c.valore);
+      const hasOAuth = config.some(c => c.chiave === 'email_oauth_refresh_token' && c.valore);
       configObj.password_configured = hasPassword;
+      configObj.oauth_configured = hasOAuth;
+      configObj.auth_method = config.find(c => c.chiave === 'email_auth_method')?.valore || (hasOAuth ? 'oauth2' : 'smtp');
     }
 
     res.json(configObj);
   } catch (error) {
     console.error('Errore config email:', error);
-    res.json({}); // Ritorna oggetto vuoto invece di errore
+    res.json({});
   }
 });
 
-// POST /api/email/config - Salva configurazione email
+// POST /api/email/config - Salva configurazione email SMTP
 router.post('/config', (req, res) => {
   try {
     const { email, password, nome_mittente } = req.body || {};
@@ -139,7 +340,6 @@ router.post('/config', (req, res) => {
       return res.status(400).json({ error: 'Email obbligatoria' });
     }
 
-    // Salva/aggiorna configurazione
     const upsert = (chiave, valore) => {
       try {
         const existing = db.prepare('SELECT id FROM configurazione WHERE chiave = ?').get(chiave);
@@ -158,6 +358,7 @@ router.post('/config', (req, res) => {
       upsert('email_password', password);
     }
     upsert('email_nome_mittente', nome_mittente || 'Antonio Tritto');
+    upsert('email_auth_method', 'smtp');
 
     saveDatabase();
     res.json({ success: true, message: 'Configurazione salvata' });
@@ -167,41 +368,66 @@ router.post('/config', (req, res) => {
   }
 });
 
-// POST /api/email/test - Test connessione SMTP
+// POST /api/email/test - Test connessione
 router.post('/test', async (req, res) => {
   try {
-    const config = getEmailConfig();
+    const authMethod = getAuthMethod();
 
-    if (!config.email) {
-      return res.status(400).json({
-        error: 'Email non configurata',
-        hint: 'Inserisci l\'email Gmail e clicca "Salva Configurazione" prima di testare.'
+    if (authMethod === 'oauth2') {
+      // Test OAuth
+      const config = getOAuthConfig();
+      if (!config.refresh_token) {
+        return res.status(400).json({
+          error: 'Gmail non connesso',
+          hint: 'Clicca "Connetti Gmail" per autorizzare l\'accesso'
+        });
+      }
+
+      oauth2Client.setCredentials({
+        refresh_token: config.refresh_token
       });
+
+      try {
+        await oauth2Client.getAccessToken();
+        res.json({ success: true, message: 'Connessione Gmail OAuth riuscita!' });
+      } catch (e) {
+        res.status(500).json({
+          error: 'Token scaduto',
+          hint: 'Riconnetti Gmail cliccando su "Connetti Gmail"'
+        });
+      }
+    } else {
+      // Test SMTP
+      const config = getEmailConfig();
+
+      if (!config.email) {
+        return res.status(400).json({
+          error: 'Email non configurata',
+          hint: 'Inserisci l\'email Gmail e clicca "Salva Configurazione" prima di testare.'
+        });
+      }
+
+      if (!config.password) {
+        return res.status(400).json({
+          error: 'Password non configurata',
+          hint: 'Inserisci l\'App Password e clicca "Salva Configurazione" prima di testare.'
+        });
+      }
+
+      const transporter = createSmtpTransporter(config);
+      await transporter.verify();
+      res.json({ success: true, message: 'Connessione Gmail SMTP riuscita!' });
     }
-
-    if (!config.password) {
-      return res.status(400).json({
-        error: 'Password non configurata',
-        hint: 'Inserisci l\'App Password e clicca "Salva Configurazione" prima di testare.'
-      });
-    }
-
-    const transporter = createTransporter(config);
-
-    // Verifica connessione
-    await transporter.verify();
-
-    res.json({ success: true, message: 'Connessione Gmail riuscita!' });
   } catch (error) {
     console.error('Errore test email:', error);
 
     let hint = 'Verifica le credenziali e riprova.';
     if (error.message.includes('535') || error.message.includes('Username and Password not accepted')) {
-      hint = 'Password errata. Assicurati di usare una App Password (16 caratteri), non la password normale di Gmail. Vai su myaccount.google.com → Sicurezza → Password per le app.';
+      hint = 'Password errata. Assicurati di usare una App Password (16 caratteri), non la password normale di Gmail.';
     } else if (error.message.includes('534') || error.message.includes('less secure')) {
       hint = 'Gmail richiede una App Password. Attiva la verifica in 2 passaggi e crea una App Password.';
     } else if (error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
-      hint = 'Problema di connessione di rete. Verifica la connessione internet.';
+      hint = 'Problema di connessione di rete.';
     }
 
     res.status(500).json({
@@ -221,29 +447,23 @@ router.post('/send', async (req, res) => {
       return res.status(400).json({ error: 'Destinatario obbligatorio' });
     }
 
-    const config = getEmailConfig();
-    if (!config.email || !config.password) {
-      return res.status(400).json({ error: 'Configurazione email incompleta' });
-    }
-
     let emailOggetto = oggetto;
     let emailCorpo = corpo;
 
-    // Se è specificato un template, usalo
     if (template_id && emailTemplates[template_id]) {
       const template = emailTemplates[template_id];
       emailOggetto = emailOggetto || template.oggetto;
       emailCorpo = emailCorpo || template.corpo;
     }
 
-    // Sostituisci placeholder
     emailOggetto = replacePlaceholders(emailOggetto, { nome: to_name });
     emailCorpo = replacePlaceholders(emailCorpo, { nome: to_name });
 
-    const transporter = createTransporter(config);
+    const transporter = await getTransporter();
+    const config = getEmailConfig();
 
     const result = await transporter.sendMail({
-      from: `"${config.nome_mittente}" <${config.email}>`,
+      from: `"${config.nome_mittente || 'Antonio Tritto'}" <${config.email}>`,
       to: to,
       subject: emailOggetto,
       text: emailCorpo,
@@ -275,7 +495,7 @@ router.post('/send', async (req, res) => {
   }
 });
 
-// POST /api/email/send-bulk - Invia email in bulk con rate limiting
+// POST /api/email/send-bulk - Invia email in bulk
 router.post('/send-bulk', async (req, res) => {
   try {
     const { contatti_ids, oggetto, corpo, template_id, delay_seconds = 3 } = req.body;
@@ -286,11 +506,6 @@ router.post('/send-bulk', async (req, res) => {
 
     if (bulkEmailStatus.inProgress) {
       return res.status(400).json({ error: 'Invio bulk già in corso. Attendi il completamento.' });
-    }
-
-    const config = getEmailConfig();
-    if (!config.email || !config.password) {
-      return res.status(400).json({ error: 'Configurazione email incompleta' });
     }
 
     // Recupera contatti con email
@@ -304,7 +519,6 @@ router.post('/send-bulk', async (req, res) => {
       return res.status(400).json({ error: 'Nessun contatto con email valida' });
     }
 
-    // Limita a 50 email per batch (sicurezza anti-spam)
     const maxBatch = 50;
     if (contatti.length > maxBatch) {
       return res.status(400).json({
@@ -322,14 +536,13 @@ router.post('/send-bulk', async (req, res) => {
       startTime: new Date()
     };
 
-    // Risposta immediata
     res.json({
       success: true,
       message: `Invio avviato per ${contatti.length} contatti`,
       status_url: '/api/email/bulk-status'
     });
 
-    // Processo asincrono di invio
+    // Processo asincrono
     let emailOggetto = oggetto;
     let emailCorpo = corpo;
 
@@ -339,16 +552,19 @@ router.post('/send-bulk', async (req, res) => {
       emailCorpo = emailCorpo || template.corpo;
     }
 
-    const transporter = createTransporter(config);
+    const transporter = await getTransporter();
+    const config = getEmailConfig();
 
     for (const contatto of contatti) {
+      if (bulkEmailStatus.cancelled) break;
+
       try {
         const nomeCompleto = `${contatto.nome} ${contatto.cognome || ''}`.trim();
         const oggettoPersonalizzato = replacePlaceholders(emailOggetto, { nome: nomeCompleto });
         const corpoPersonalizzato = replacePlaceholders(emailCorpo, { nome: nomeCompleto });
 
         await transporter.sendMail({
-          from: `"${config.nome_mittente}" <${config.email}>`,
+          from: `"${config.nome_mittente || 'Antonio Tritto'}" <${config.email}>`,
           to: contatto.email,
           subject: oggettoPersonalizzato,
           text: corpoPersonalizzato,
@@ -357,7 +573,6 @@ router.post('/send-bulk', async (req, res) => {
 
         bulkEmailStatus.sent++;
 
-        // Registra interazione
         try {
           db.prepare(`
             INSERT INTO interazioni (contatto_id, tipo, canale, oggetto, descrizione)
@@ -365,7 +580,6 @@ router.post('/send-bulk', async (req, res) => {
           `).run(contatto.id, oggettoPersonalizzato);
         } catch (e) {}
 
-        // Delay tra email (anti-spam)
         if (contatti.indexOf(contatto) < contatti.length - 1) {
           await sleep(delay_seconds * 1000);
         }
@@ -390,12 +604,12 @@ router.post('/send-bulk', async (req, res) => {
   }
 });
 
-// GET /api/email/bulk-status - Stato invio bulk
+// GET /api/email/bulk-status
 router.get('/bulk-status', (req, res) => {
   res.json(bulkEmailStatus);
 });
 
-// POST /api/email/bulk-cancel - Annulla invio bulk (imposta flag)
+// POST /api/email/bulk-cancel
 router.post('/bulk-cancel', (req, res) => {
   if (bulkEmailStatus.inProgress) {
     bulkEmailStatus.cancelled = true;
@@ -406,6 +620,38 @@ router.post('/bulk-cancel', (req, res) => {
 });
 
 // ========== FUNZIONI HELPER ==========
+
+function getAuthMethod() {
+  try {
+    const row = db.prepare("SELECT valore FROM configurazione WHERE chiave = 'email_auth_method'").get();
+    return row?.valore || 'smtp';
+  } catch (e) {
+    return 'smtp';
+  }
+}
+
+function getOAuthConfig() {
+  try {
+    const configs = db.prepare(`
+      SELECT chiave, valore FROM configurazione
+      WHERE chiave LIKE 'email_%'
+    `).all();
+
+    const config = {};
+    configs.forEach(c => {
+      config[c.chiave.replace('email_', '')] = c.valore;
+    });
+
+    return {
+      email: config.address,
+      access_token: config.oauth_access_token,
+      refresh_token: config.oauth_refresh_token,
+      nome_mittente: config.nome_mittente || 'Antonio Tritto'
+    };
+  } catch (e) {
+    return {};
+  }
+}
 
 function getEmailConfig() {
   try {
@@ -429,18 +675,46 @@ function getEmailConfig() {
   }
 }
 
-function createTransporter(config) {
+async function getTransporter() {
+  const authMethod = getAuthMethod();
+
+  if (authMethod === 'oauth2') {
+    const config = getOAuthConfig();
+
+    oauth2Client.setCredentials({
+      refresh_token: config.refresh_token
+    });
+
+    const accessToken = await oauth2Client.getAccessToken();
+
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        type: 'OAuth2',
+        user: config.email,
+        clientId: GOOGLE_CLIENT_ID,
+        clientSecret: GOOGLE_CLIENT_SECRET,
+        refreshToken: config.refresh_token,
+        accessToken: accessToken.token
+      }
+    });
+  } else {
+    const config = getEmailConfig();
+    return createSmtpTransporter(config);
+  }
+}
+
+function createSmtpTransporter(config) {
   return nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: config.email,
       pass: config.password
     },
-    // Impostazioni per evitare problemi
     pool: true,
     maxConnections: 1,
-    rateDelta: 3000, // 3 secondi tra connessioni
-    rateLimit: 5 // max 5 messaggi per connessione
+    rateDelta: 3000,
+    rateLimit: 5
   });
 }
 

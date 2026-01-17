@@ -9,18 +9,23 @@
     "init-db": "node src/scripts/init-db.js",
     "seed": "node src/scripts/seed-data.js"
   },
-  "keywords": ["crm", "private-banking", "wealth-management"],
+  "keywords": [
+    "crm",
+    "private-banking",
+    "wealth-management"
+  ],
   "author": "Antonio Tritto",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2",
-    "sql.js": "^1.10.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
+    "express": "^4.18.2",
     "express-validator": "^7.0.1",
+    "googleapis": "^170.1.0",
     "helmet": "^7.1.0",
     "morgan": "^1.10.0",
-    "nodemailer": "^6.9.8"
+    "nodemailer": "^6.9.8",
+    "sql.js": "^1.10.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"
