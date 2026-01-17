@@ -172,8 +172,18 @@ router.post('/test', async (req, res) => {
   try {
     const config = getEmailConfig();
 
-    if (!config.email || !config.password) {
-      return res.status(400).json({ error: 'Configurazione email incompleta' });
+    if (!config.email) {
+      return res.status(400).json({
+        error: 'Email non configurata',
+        hint: 'Inserisci l\'email Gmail e clicca "Salva Configurazione" prima di testare.'
+      });
+    }
+
+    if (!config.password) {
+      return res.status(400).json({
+        error: 'Password non configurata',
+        hint: 'Inserisci l\'App Password e clicca "Salva Configurazione" prima di testare.'
+      });
     }
 
     const transporter = createTransporter(config);
@@ -184,12 +194,20 @@ router.post('/test', async (req, res) => {
     res.json({ success: true, message: 'Connessione Gmail riuscita!' });
   } catch (error) {
     console.error('Errore test email:', error);
+
+    let hint = 'Verifica le credenziali e riprova.';
+    if (error.message.includes('535') || error.message.includes('Username and Password not accepted')) {
+      hint = 'Password errata. Assicurati di usare una App Password (16 caratteri), non la password normale di Gmail. Vai su myaccount.google.com → Sicurezza → Password per le app.';
+    } else if (error.message.includes('534') || error.message.includes('less secure')) {
+      hint = 'Gmail richiede una App Password. Attiva la verifica in 2 passaggi e crea una App Password.';
+    } else if (error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
+      hint = 'Problema di connessione di rete. Verifica la connessione internet.';
+    }
+
     res.status(500).json({
       error: 'Connessione fallita',
       details: error.message,
-      hint: error.message.includes('535')
-        ? 'Password errata. Assicurati di usare una App Password, non la password normale di Gmail.'
-        : 'Verifica le credenziali e che la verifica in 2 passaggi sia attiva.'
+      hint: hint
     });
   }
 });
