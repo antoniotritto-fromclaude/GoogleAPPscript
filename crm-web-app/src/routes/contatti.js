@@ -101,17 +101,42 @@ router.post('/', (req, res) => {
       return res.status(400).json({ error: 'Nome obbligatorio' });
     }
 
+    // Usa fonte_acquisizione se disponibile, altrimenti fonte
+    const fonteFinale = fonte_acquisizione || fonte || null;
+    const statoFinale = stato_sviluppo || 'Nuovo';
+
     const result = db.prepare(`
-      INSERT INTO contatti (nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin, categoria, tier, fonte, fonte_acquisizione, stato_sviluppo, engagement_score, aum_potenziale, note, data_primo_contatto)
+      INSERT INTO contatti (
+        nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin,
+        categoria, tier, fonte, fonte_acquisizione, stato_sviluppo,
+        engagement_score, aum_potenziale, note, data_primo_contatto
+      )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
-    `).run(nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin, categoria, tier || 'C', fonte, fonte_acquisizione || fonte, stato_sviluppo || 'Nuovo', engagement_score || 5, aum_potenziale || 0, note);
+    `).run(
+      nome || null,
+      cognome || null,
+      azienda || null,
+      ruolo || null,
+      email || null,
+      telefono || null,
+      cellulare || null,
+      linkedin || null,
+      categoria || null,
+      tier || 'C',
+      fonteFinale,
+      fonteFinale,
+      statoFinale,
+      engagement_score || 5,
+      aum_potenziale || 0,
+      note || null
+    );
 
     saveDatabase();
     const newContatto = db.prepare('SELECT * FROM contatti WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(newContatto);
   } catch (error) {
     console.error('Errore creazione contatto:', error);
-    res.status(500).json({ error: 'Errore nella creazione contatto' });
+    res.status(500).json({ error: 'Errore nella creazione contatto: ' + error.message });
   }
 });
 

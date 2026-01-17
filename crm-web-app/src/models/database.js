@@ -190,12 +190,22 @@ const initializeDatabase = async () => {
   `);
 
   // Aggiungi colonne se non esistono (per aggiornamento db esistente)
-  try {
-    db.exec(`ALTER TABLE contatti ADD COLUMN fonte_acquisizione TEXT`);
-  } catch (e) { /* colonna già esiste */ }
-  try {
-    db.exec(`ALTER TABLE contatti ADD COLUMN stato_sviluppo TEXT DEFAULT 'Nuovo'`);
-  } catch (e) { /* colonna già esiste */ }
+  // Verifica e aggiunge le nuove colonne
+  const addColumnIfNotExists = (table, column, type) => {
+    try {
+      const tableInfo = database.exec(`PRAGMA table_info(${table})`);
+      const columns = tableInfo[0]?.values?.map(row => row[1]) || [];
+      if (!columns.includes(column)) {
+        database.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+        console.log(`✅ Colonna ${column} aggiunta a ${table}`);
+      }
+    } catch (e) {
+      console.log(`Nota: ${e.message}`);
+    }
+  };
+
+  addColumnIfNotExists('contatti', 'fonte_acquisizione', 'TEXT');
+  addColumnIfNotExists('contatti', 'stato_sviluppo', "TEXT DEFAULT 'Nuovo'");
 
   // Tabella Pipeline
   db.exec(`
