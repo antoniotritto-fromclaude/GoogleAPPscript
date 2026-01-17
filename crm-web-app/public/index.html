@@ -62,6 +62,10 @@
             <i class="bi bi-graph-up-arrow"></i>
             <span>AUM Tracking</span>
           </div>
+          <div class="nav-item" data-page="email">
+            <i class="bi bi-envelope"></i>
+            <span>Email Marketing</span>
+          </div>
         </div>
 
         <div class="nav-section">
@@ -773,6 +777,129 @@
                   </div>
                   <div class="kpi-value" id="stat-chiamate">-</div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Email Marketing Page -->
+      <div id="page-email" class="page-content hidden">
+        <div class="page-header">
+          <div>
+            <h1>Email Marketing</h1>
+            <p class="text-muted">Configura Gmail e invia email ai contatti</p>
+          </div>
+        </div>
+
+        <!-- Configurazione Gmail -->
+        <div class="card" style="margin-bottom: var(--spacing-lg);">
+          <div class="card-header">
+            <h3 class="card-title">Configurazione Gmail SMTP</h3>
+            <span id="email-status" class="status-badge info">Non configurato</span>
+          </div>
+          <div class="card-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Email Gmail</label>
+                <input type="email" class="form-input" id="email-config-address" placeholder="tuaemail@gmail.com">
+              </div>
+              <div class="form-group">
+                <label class="form-label">App Password</label>
+                <input type="password" class="form-input" id="email-config-password" placeholder="xxxx xxxx xxxx xxxx">
+                <small class="text-muted">Genera da: Google Account → Sicurezza → Password per le app</small>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Nome Mittente</label>
+                <input type="text" class="form-input" id="email-config-nome" placeholder="Antonio Tritto">
+              </div>
+            </div>
+            <div style="display: flex; gap: var(--spacing-sm);">
+              <button class="btn btn-primary" onclick="saveEmailConfig()">
+                <i class="bi bi-save"></i> Salva Configurazione
+              </button>
+              <button class="btn btn-secondary" onclick="testEmailConnection()">
+                <i class="bi bi-plug"></i> Test Connessione
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Invio Email -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Invia Email</h3>
+          </div>
+          <div class="card-body">
+            <div class="form-row">
+              <div class="form-group" style="flex: 2;">
+                <label class="form-label">Template</label>
+                <select class="form-select" id="email-template" onchange="loadEmailTemplate()">
+                  <option value="">-- Email Personalizzata --</option>
+                  <option value="presentazione">Presentazione Servizi</option>
+                  <option value="followup">Follow-up</option>
+                  <option value="invito_evento">Invito Evento</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label class="form-label">Stato Contatti</label>
+                <select class="form-select" id="email-filter-stato">
+                  <option value="">Tutti</option>
+                  <option value="Nuovo">Nuovo</option>
+                  <option value="Contattato">Contattato</option>
+                  <option value="In Lavorazione">In Lavorazione</option>
+                  <option value="Qualificato">Qualificato</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Oggetto</label>
+              <input type="text" class="form-input" id="email-oggetto" placeholder="Oggetto dell'email">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Corpo Email</label>
+              <textarea class="form-textarea" id="email-corpo" rows="10" placeholder="Scrivi il contenuto dell'email...
+
+Usa {{nome}} per personalizzare con il nome del destinatario"></textarea>
+            </div>
+
+            <!-- Selezione Destinatari -->
+            <div class="form-group">
+              <label class="form-label">Destinatari</label>
+              <div style="display: flex; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+                <button class="btn btn-secondary" onclick="loadEmailContatti()">
+                  <i class="bi bi-arrow-repeat"></i> Carica Contatti
+                </button>
+                <button class="btn btn-secondary" onclick="selectAllEmailContatti(true)">
+                  <i class="bi bi-check-all"></i> Seleziona Tutti
+                </button>
+                <button class="btn btn-secondary" onclick="selectAllEmailContatti(false)">
+                  <i class="bi bi-x-lg"></i> Deseleziona Tutti
+                </button>
+                <span id="email-selected-count" style="padding: 8px; color: var(--text-secondary);">0 selezionati</span>
+              </div>
+              <div id="email-contatti-list" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: var(--spacing-sm);">
+                <p class="text-muted">Clicca "Carica Contatti" per visualizzare la lista</p>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: var(--spacing-sm); justify-content: flex-end; margin-top: var(--spacing-lg);">
+              <button class="btn btn-primary" onclick="sendBulkEmail()" id="btn-send-bulk">
+                <i class="bi bi-send"></i> Invia Email Bulk
+              </button>
+            </div>
+
+            <!-- Stato Invio -->
+            <div id="email-bulk-status" style="display: none; margin-top: var(--spacing-lg); padding: var(--spacing-md); background: var(--bg-secondary); border-radius: var(--radius-md);">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <strong>Invio in corso...</strong>
+                  <div id="email-progress-text">0 / 0 email inviate</div>
+                </div>
+                <div class="spinner"></div>
+              </div>
+              <div style="margin-top: var(--spacing-sm); height: 8px; background: var(--border-color); border-radius: 4px; overflow: hidden;">
+                <div id="email-progress-bar" style="height: 100%; width: 0%; background: var(--primary); transition: width 0.3s;"></div>
               </div>
             </div>
           </div>

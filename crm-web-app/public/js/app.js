@@ -123,6 +123,9 @@ async function loadPageData(page) {
     case 'gestione':
       await loadGestione();
       break;
+    case 'email':
+      await loadEmail();
+      break;
   }
 }
 
@@ -2342,6 +2345,236 @@ document.getElementById('filter-tier')?.addEventListener('change', loadContatti)
 document.getElementById('filter-cliente')?.addEventListener('change', loadContatti);
 document.getElementById('filter-stato')?.addEventListener('change', loadContatti);
 document.getElementById('filter-fonte')?.addEventListener('change', loadContatti);
+
+// ========== EMAIL MARKETING FUNCTIONS ==========
+
+let emailContattiList = [];
+
+async function loadEmail() {
+  try {
+    // Carica configurazione email
+    const config = await fetchAPI('/email/config');
+
+    if (config.address) {
+      document.getElementById('email-config-address').value = config.address;
+      document.getElementById('email-config-nome').value = config.nome_mittente || '';
+
+      if (config.password_configured) {
+        document.getElementById('email-status').textContent = 'Configurato';
+        document.getElementById('email-status').className = 'status-badge success';
+        document.getElementById('email-config-password').placeholder = '••••••••••••••••';
+      }
+    }
+  } catch (error) {
+    console.error('Errore caricamento config email:', error);
+  }
+}
+
+async function saveEmailConfig() {
+  const email = document.getElementById('email-config-address').value;
+  const password = document.getElementById('email-config-password').value;
+  const nome = document.getElementById('email-config-nome').value;
+
+  if (!email) {
+    alert('Inserisci l\'indirizzo email');
+    return;
+  }
+
+  try {
+    const data = { email, nome_mittente: nome };
+    if (password) {
+      data.password = password;
+    }
+
+    await fetchAPI('/email/config', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+
+    alert('Configurazione salvata!');
+    loadEmail();
+  } catch (error) {
+    alert('Errore nel salvataggio: ' + error.message);
+  }
+}
+
+async function testEmailConnection() {
+  try {
+    document.getElementById('email-status').textContent = 'Test in corso...';
+    document.getElementById('email-status').className = 'status-badge warning';
+
+    const result = await fetchAPI('/email/test', { method: 'POST' });
+
+    if (result.success) {
+      document.getElementById('email-status').textContent = 'Connessione OK';
+      document.getElementById('email-status').className = 'status-badge success';
+      alert('Connessione a Gmail riuscita!');
+    }
+  } catch (error) {
+    document.getElementById('email-status').textContent = 'Errore connessione';
+    document.getElementById('email-status').className = 'status-badge danger';
+    alert('Errore: ' + (error.hint || error.details || error.message));
+  }
+}
+
+async function loadEmailTemplate() {
+  const templateId = document.getElementById('email-template').value;
+
+  if (!templateId) {
+    document.getElementById('email-oggetto').value = '';
+    document.getElementById('email-corpo').value = '';
+    return;
+  }
+
+  try {
+    const template = await fetchAPI(`/email/template/${templateId}`);
+    document.getElementById('email-oggetto').value = template.oggetto || '';
+    document.getElementById('email-corpo').value = template.corpo || '';
+  } catch (error) {
+    console.error('Errore caricamento template:', error);
+  }
+}
+
+async function loadEmailContatti() {
+  try {
+    const stato = document.getElementById('email-filter-stato').value;
+    const params = new URLSearchParams();
+    if (stato) params.append('stato_sviluppo', stato);
+
+    const data = await fetchAPI(`/contatti?${params}`);
+    emailContattiList = data.contatti.filter(c => c.email);
+
+    const container = document.getElementById('email-contatti-list');
+
+    if (emailContattiList.length === 0) {
+      container.innerHTML = '<p class="text-muted">Nessun contatto con email trovato</p>';
+      return;
+    }
+
+    container.innerHTML = emailContattiList.map(c => `
+      <label style="display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer;">
+        <input type="checkbox" class="email-contatto-check" value="${c.id}" data-email="${c.email}">
+        <span>${c.nome} ${c.cognome || ''}</span>
+        <span style="color: var(--text-tertiary); font-size: 12px;">${c.email}</span>
+        <span class="status-badge info" style="font-size: 10px; margin-left: auto;">${c.stato_sviluppo || 'Nuovo'}</span>
+      </label>
+    `).join('');
+
+    // Aggiungi listener per conteggio
+    container.querySelectorAll('.email-contatto-check').forEach(cb => {
+      cb.addEventListener('change', updateEmailSelectedCount);
+    });
+
+    updateEmailSelectedCount();
+  } catch (error) {
+    console.error('Errore caricamento contatti:', error);
+  }
+}
+
+function selectAllEmailContatti(select) {
+  document.querySelectorAll('.email-contatto-check').forEach(cb => {
+    cb.checked = select;
+  });
+  updateEmailSelectedCount();
+}
+
+function updateEmailSelectedCount() {
+  const count = document.querySelectorAll('.email-contatto-check:checked').length;
+  document.getElementById('email-selected-count').textContent = `${count} selezionati`;
+}
+
+async function sendBulkEmail() {
+  const oggetto = document.getElementById('email-oggetto').value;
+  const corpo = document.getElementById('email-corpo').value;
+  const templateId = document.getElementById('email-template').value;
+
+  if (!oggetto && !templateId) {
+    alert('Inserisci un oggetto o seleziona un template');
+    return;
+  }
+
+  const selectedIds = Array.from(document.querySelectorAll('.email-contatto-check:checked'))
+    .map(cb => parseInt(cb.value));
+
+  if (selectedIds.length === 0) {
+    alert('Seleziona almeno un destinatario');
+    return;
+  }
+
+  if (selectedIds.length > 50) {
+    alert('Massimo 50 email per invio. Selezionati: ' + selectedIds.length);
+    return;
+  }
+
+  if (!confirm(`Stai per inviare ${selectedIds.length} email. Continuare?`)) {
+    return;
+  }
+
+  try {
+    // Mostra stato
+    document.getElementById('email-bulk-status').style.display = 'block';
+    document.getElementById('btn-send-bulk').disabled = true;
+
+    const result = await fetchAPI('/email/send-bulk', {
+      method: 'POST',
+      body: JSON.stringify({
+        contatti_ids: selectedIds,
+        oggetto: oggetto,
+        corpo: corpo,
+        template_id: templateId,
+        delay_seconds: 3
+      })
+    });
+
+    if (result.success) {
+      // Polling per lo stato
+      pollBulkEmailStatus();
+    }
+  } catch (error) {
+    alert('Errore: ' + error.message);
+    document.getElementById('email-bulk-status').style.display = 'none';
+    document.getElementById('btn-send-bulk').disabled = false;
+  }
+}
+
+async function pollBulkEmailStatus() {
+  try {
+    const status = await fetchAPI('/email/bulk-status');
+
+    const total = status.total || 1;
+    const sent = status.sent || 0;
+    const failed = status.failed || 0;
+    const progress = ((sent + failed) / total) * 100;
+
+    document.getElementById('email-progress-text').textContent =
+      `${sent} / ${total} email inviate${failed > 0 ? ` (${failed} fallite)` : ''}`;
+    document.getElementById('email-progress-bar').style.width = progress + '%';
+
+    if (status.inProgress) {
+      setTimeout(pollBulkEmailStatus, 2000);
+    } else {
+      // Completato
+      document.getElementById('btn-send-bulk').disabled = false;
+
+      if (failed === 0) {
+        alert(`Invio completato! ${sent} email inviate con successo.`);
+      } else {
+        alert(`Invio completato: ${sent} successo, ${failed} fallite.`);
+      }
+
+      setTimeout(() => {
+        document.getElementById('email-bulk-status').style.display = 'none';
+        document.getElementById('email-progress-bar').style.width = '0%';
+      }, 3000);
+    }
+  } catch (error) {
+    console.error('Errore polling:', error);
+    setTimeout(pollBulkEmailStatus, 3000);
+  }
+}
+
+// Listener per filtro stato email
+document.getElementById('email-filter-stato')?.addEventListener('change', loadEmailContatti);
 
 function debounce(func, wait) {
   let timeout;
