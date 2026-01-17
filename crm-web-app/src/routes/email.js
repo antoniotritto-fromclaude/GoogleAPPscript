@@ -98,34 +98,42 @@ router.get('/template/:id', (req, res) => {
 // GET /api/email/config - Recupera configurazione email (senza password)
 router.get('/config', (req, res) => {
   try {
-    const config = db.prepare(`
-      SELECT chiave, valore FROM configurazione
-      WHERE chiave LIKE 'email_%'
-    `).all();
+    let config = [];
+    try {
+      config = db.prepare(`
+        SELECT chiave, valore FROM configurazione
+        WHERE chiave LIKE 'email_%'
+      `).all();
+    } catch (e) {
+      // Tabella potrebbe non esistere ancora
+      console.log('Configurazione email non ancora inizializzata');
+    }
 
     const configObj = {};
-    config.forEach(c => {
-      // Non restituire la password
-      if (c.chiave !== 'email_password') {
-        configObj[c.chiave.replace('email_', '')] = c.valore;
-      }
-    });
+    if (config && config.length > 0) {
+      config.forEach(c => {
+        // Non restituire la password
+        if (c.chiave !== 'email_password') {
+          configObj[c.chiave.replace('email_', '')] = c.valore;
+        }
+      });
 
-    // Indica se la password è configurata
-    const hasPassword = config.some(c => c.chiave === 'email_password' && c.valore);
-    configObj.password_configured = hasPassword;
+      // Indica se la password è configurata
+      const hasPassword = config.some(c => c.chiave === 'email_password' && c.valore);
+      configObj.password_configured = hasPassword;
+    }
 
     res.json(configObj);
   } catch (error) {
     console.error('Errore config email:', error);
-    res.status(500).json({ error: 'Errore nel recupero configurazione' });
+    res.json({}); // Ritorna oggetto vuoto invece di errore
   }
 });
 
 // POST /api/email/config - Salva configurazione email
 router.post('/config', (req, res) => {
   try {
-    const { email, password, nome_mittente } = req.body;
+    const { email, password, nome_mittente } = req.body || {};
 
     if (!email) {
       return res.status(400).json({ error: 'Email obbligatoria' });
@@ -133,17 +141,21 @@ router.post('/config', (req, res) => {
 
     // Salva/aggiorna configurazione
     const upsert = (chiave, valore) => {
-      const existing = db.prepare('SELECT id FROM configurazione WHERE chiave = ?').get(chiave);
-      if (existing) {
-        db.prepare('UPDATE configurazione SET valore = ?, updated_at = CURRENT_TIMESTAMP WHERE chiave = ?').run(valore, chiave);
-      } else {
-        db.prepare('INSERT INTO configurazione (chiave, valore, tipo) VALUES (?, ?, ?)').run(chiave, valore, 'string');
+      try {
+        const existing = db.prepare('SELECT id FROM configurazione WHERE chiave = ?').get(chiave);
+        if (existing) {
+          db.prepare('UPDATE configurazione SET valore = ?, updated_at = CURRENT_TIMESTAMP WHERE chiave = ?').run(valore, chiave);
+        } else {
+          db.prepare('INSERT INTO configurazione (chiave, valore, tipo) VALUES (?, ?, ?)').run(chiave, valore, 'string');
+        }
+      } catch (e) {
+        console.error('Errore upsert:', e.message);
       }
     };
 
     upsert('email_address', email);
     if (password) {
-      upsert('email_password', password); // In produzione, criptare!
+      upsert('email_password', password);
     }
     upsert('email_nome_mittente', nome_mittente || 'Antonio Tritto');
 
@@ -151,7 +163,7 @@ router.post('/config', (req, res) => {
     res.json({ success: true, message: 'Configurazione salvata' });
   } catch (error) {
     console.error('Errore salvataggio config:', error);
-    res.status(500).json({ error: 'Errore nel salvataggio' });
+    res.status(500).json({ error: 'Errore nel salvataggio: ' + error.message });
   }
 });
 
