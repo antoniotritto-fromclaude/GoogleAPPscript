@@ -9,10 +9,23 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const session = require('express-session');
 const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'crm-antonio-tritto-secret-key-2024',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 giorni
+  }
+}));
 
 // Middleware
 app.use(helmet({
@@ -23,7 +36,7 @@ app.use(helmet({
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "fonts.googleapis.com"],
       fontSrc: ["'self'", "fonts.gstatic.com", "cdn.jsdelivr.net"],
-      imgSrc: ["'self'", "data:", "blob:"],
+      imgSrc: ["'self'", "data:", "blob:", "*.googleusercontent.com", "lh3.googleusercontent.com"],
       connectSrc: ["'self'", "cdn.jsdelivr.net", "accounts.google.com"],
       frameSrc: ["'self'", "accounts.google.com"]
     }
@@ -33,14 +46,6 @@ app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Serve static files
-app.use(express.static(path.join(__dirname, '../public')));
-
-// Serve main page
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/index.html'));
-});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -58,6 +63,16 @@ async function startServer() {
     const { initDatabase } = require('./models/database');
     await initDatabase();
     console.log('✅ Database pronto');
+
+    // Auth routes (pubbliche)
+    const { router: authRoutes, requireAuth } = require('./routes/auth');
+    app.use('/auth', authRoutes);
+
+    // Applica middleware di autenticazione
+    app.use(requireAuth);
+
+    // Serve static files (dopo auth per proteggere tutto)
+    app.use(express.static(path.join(__dirname, '../public')));
 
     // Carica routes dopo l'inizializzazione del database
     const dashboardRoutes = require('./routes/dashboard');
@@ -82,6 +97,11 @@ async function startServer() {
     app.use('/api/admin', adminRoutes);
     app.use('/api/interazioni', interazioniRoutes);
     app.use('/api/email', emailRoutes);
+
+    // Serve main page
+    app.get('/', (req, res) => {
+      res.sendFile(path.join(__dirname, '../public/index.html'));
+    });
 
     // Start server
     app.listen(PORT, () => {

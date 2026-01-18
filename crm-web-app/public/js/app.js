@@ -2664,7 +2664,31 @@ function debounce(func, wait) {
   };
 }
 
+// Load user info
+async function loadUserInfo() {
+  try {
+    const response = await fetch('/auth/user');
+    if (response.ok) {
+      const user = await response.json();
+
+      const nameEl = document.getElementById('user-name');
+      const emailEl = document.getElementById('user-email');
+      const avatarEl = document.getElementById('user-avatar');
+
+      if (nameEl) nameEl.textContent = user.name || 'Utente';
+      if (emailEl) emailEl.textContent = user.email || '';
+      if (avatarEl && user.picture) {
+        avatarEl.src = user.picture;
+        avatarEl.style.display = 'block';
+      }
+    }
+  } catch (error) {
+    console.log('User info not available');
+  }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+  loadUserInfo();
   loadDashboard();
 });
