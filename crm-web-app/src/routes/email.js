@@ -686,40 +686,51 @@ async function getTransporter() {
     console.log('📧 OAuth config email:', config.email);
     console.log('📧 Has refresh_token:', !!config.refresh_token);
 
-    oauth2Client.setCredentials({
-      refresh_token: config.refresh_token
-    });
-
-    try {
-      const accessToken = await oauth2Client.getAccessToken();
-      console.log('📧 Access token obtained:', !!accessToken.token);
-
-      // Usa XOAuth2 con connessione diretta (evita problemi SMTP su Render)
-      return nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        secure: true,
-        auth: {
-          type: 'OAuth2',
-          user: config.email,
-          clientId: GOOGLE_CLIENT_ID,
-          clientSecret: GOOGLE_CLIENT_SECRET,
-          refreshToken: config.refresh_token,
-          accessToken: accessToken.token
-        },
-        // Timeout più lunghi per Render
-        connectionTimeout: 30000,
-        greetingTimeout: 30000,
-        socketTimeout: 60000
-      });
-    } catch (tokenError) {
-      console.error('❌ Errore ottenimento access token:', tokenError.message);
-      throw tokenError;
-    }
+    // Usa API Gmail REST invece di SMTP (Render blocca SMTP)
+    return {
+      sendMail: async (mailOptions) => {
+        return await sendMailViaGmailAPI(config, mailOptions);
+      }
+    };
   } else {
     const config = getEmailConfig();
     return createSmtpTransporter(config);
   }
+}
+
+// Invia email tramite API Gmail REST (no SMTP)
+async function sendMailViaGmailAPI(config, mailOptions) {
+  oauth2Client.setCredentials({
+    refresh_token: config.refresh_token
+  });
+
+  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+  // Costruisci email in formato RFC 2822
+  const emailLines = [
+    `From: "${mailOptions.from.split('"')[1] || 'Antonio Tritto'}" <${config.email}>`,
+    `To: ${mailOptions.to}`,
+    `Subject: =?UTF-8?B?${Buffer.from(mailOptions.subject).toString('base64')}?=`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=UTF-8',
+    '',
+    mailOptions.html || mailOptions.text
+  ];
+
+  const email = emailLines.join('\r\n');
+  const encodedEmail = Buffer.from(email).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+  console.log('📧 Invio email a:', mailOptions.to);
+
+  const result = await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: {
+      raw: encodedEmail
+    }
+  });
+
+  console.log('✅ Email inviata, messageId:', result.data.id);
+  return { messageId: result.data.id };
 }
 
 function createSmtpTransporter(config) {
