@@ -694,8 +694,11 @@ async function getTransporter() {
       const accessToken = await oauth2Client.getAccessToken();
       console.log('📧 Access token obtained:', !!accessToken.token);
 
+      // Usa XOAuth2 con connessione diretta (evita problemi SMTP su Render)
       return nodemailer.createTransport({
-        service: 'gmail',
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
         auth: {
           type: 'OAuth2',
           user: config.email,
@@ -703,7 +706,11 @@ async function getTransporter() {
           clientSecret: GOOGLE_CLIENT_SECRET,
           refreshToken: config.refresh_token,
           accessToken: accessToken.token
-        }
+        },
+        // Timeout più lunghi per Render
+        connectionTimeout: 30000,
+        greetingTimeout: 30000,
+        socketTimeout: 60000
       });
     } catch (tokenError) {
       console.error('❌ Errore ottenimento access token:', tokenError.message);
