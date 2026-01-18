@@ -585,6 +585,8 @@ router.post('/send-bulk', async (req, res) => {
         }
 
       } catch (error) {
+        console.error('❌ Errore invio email a', contatto.email, ':', error.message);
+        console.error('Stack:', error.stack);
         bulkEmailStatus.failed++;
         bulkEmailStatus.errors.push({
           email: contatto.email,
@@ -677,27 +679,36 @@ function getEmailConfig() {
 
 async function getTransporter() {
   const authMethod = getAuthMethod();
+  console.log('📧 Auth method:', authMethod);
 
   if (authMethod === 'oauth2') {
     const config = getOAuthConfig();
+    console.log('📧 OAuth config email:', config.email);
+    console.log('📧 Has refresh_token:', !!config.refresh_token);
 
     oauth2Client.setCredentials({
       refresh_token: config.refresh_token
     });
 
-    const accessToken = await oauth2Client.getAccessToken();
+    try {
+      const accessToken = await oauth2Client.getAccessToken();
+      console.log('📧 Access token obtained:', !!accessToken.token);
 
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        type: 'OAuth2',
-        user: config.email,
-        clientId: GOOGLE_CLIENT_ID,
-        clientSecret: GOOGLE_CLIENT_SECRET,
-        refreshToken: config.refresh_token,
-        accessToken: accessToken.token
-      }
-    });
+      return nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          type: 'OAuth2',
+          user: config.email,
+          clientId: GOOGLE_CLIENT_ID,
+          clientSecret: GOOGLE_CLIENT_SECRET,
+          refreshToken: config.refresh_token,
+          accessToken: accessToken.token
+        }
+      });
+    } catch (tokenError) {
+      console.error('❌ Errore ottenimento access token:', tokenError.message);
+      throw tokenError;
+    }
   } else {
     const config = getEmailConfig();
     return createSmtpTransporter(config);
