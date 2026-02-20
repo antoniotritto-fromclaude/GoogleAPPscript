@@ -15,6 +15,9 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Necessario per Render/proxy HTTPS
+app.set('trust proxy', 1);
+
 // Session configuration
 app.use(session({
   secret: process.env.SESSION_SECRET || 'crm-antonio-tritto-secret-key-2024',
