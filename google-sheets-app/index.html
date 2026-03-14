@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CRM Antonio Tritto</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #2563eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
+    body { background: #f8fafc; font-family: 'Segoe UI', system-ui, sans-serif; }
+    .sidebar { width: 250px; min-height: 100vh; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); }
+    .sidebar .nav-link { color: rgba(255,255,255,0.8); padding: 12px 20px; border-radius: 8px; margin: 4px 12px; }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active { background: rgba(255,255,255,0.15); color: #fff; }
+    .sidebar .nav-link i { width: 24px; }
+    .main-content { flex: 1; padding: 24px; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .card-header { background: #fff; border-bottom: 1px solid #e5e7eb; font-weight: 600; }
+    .kpi-card { background: linear-gradient(135deg, var(--bg-start) 0%, var(--bg-end) 100%); color: #fff; }
+    .kpi-card.blue { --bg-start: #3b82f6; --bg-end: #1d4ed8; }
+    .kpi-card.green { --bg-start: #10b981; --bg-end: #059669; }
+    .kpi-card.orange { --bg-start: #f59e0b; --bg-end: #d97706; }
+    .kpi-card.purple { --bg-start: #8b5cf6; --bg-end: #7c3aed; }
+    .kpi-value { font-size: 2rem; font-weight: 700; }
+    .kpi-label { opacity: 0.9; font-size: 0.9rem; }
+    .table th { font-weight: 600; color: #374151; border-top: none; }
+    .badge-stage { padding: 6px 12px; border-radius: 20px; font-weight: 500; }
+    .stage-prospect { background: #e0e7ff; color: #3730a3; }
+    .stage-lead { background: #fef3c7; color: #92400e; }
+    .stage-primo { background: #d1fae5; color: #065f46; }
+    .stage-app { background: #dbeafe; color: #1e40af; }
+    .stage-chiusura { background: #dcfce7; color: #166534; }
+    .btn-action { padding: 4px 8px; font-size: 0.85rem; }
+    .search-box { max-width: 300px; }
+    .loading { display: flex; justify-content: center; align-items: center; height: 200px; }
+    .spinner { width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .funnel-bar { height: 40px; background: linear-gradient(90deg, #3b82f6, #60a5fa); border-radius: 4px; transition: width 0.5s; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 600; }
+    .progress-target { height: 24px; border-radius: 12px; overflow: hidden; }
+    .cluster-card { border-left: 4px solid; }
+    .cluster-imprenditore { border-color: #3b82f6; }
+    .cluster-professionista { border-color: #10b981; }
+    .cluster-dipendente { border-color: #f59e0b; }
+    .cluster-azienda { border-color: #8b5cf6; }
+    .logo { font-size: 1.5rem; font-weight: 700; color: #fff; padding: 20px; }
+    .page { display: none; }
+    .page.active { display: block; }
+  </style>
+</head>
+<body>
+  <div class="d-flex">
+    <!-- Sidebar -->
+    <div class="sidebar d-flex flex-column">
+      <div class="logo">
+        <i class="bi bi-graph-up-arrow"></i> CRM
+      </div>
+      <nav class="nav flex-column flex-grow-1">
+        <a class="nav-link active" href="#" data-page="dashboard">
+          <i class="bi bi-speedometer2"></i> Dashboard
+        </a>
+        <a class="nav-link" href="#" data-page="contatti">
+          <i class="bi bi-people"></i> Contatti
+        </a>
+        <a class="nav-link" href="#" data-page="funnel">
+          <i class="bi bi-envelope"></i> Email Funnel
+        </a>
+      </nav>
+      <div class="p-3 text-white-50 small">
+        <i class="bi bi-person-circle"></i> Antonio Tritto
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+
+      <!-- Dashboard Page -->
+      <div id="page-dashboard" class="page active">
+        <h4 class="mb-4">Dashboard</h4>
+
+        <!-- KPI Cards -->
+        <div class="row g-4 mb-4" id="kpi-cards">
+          <div class="col-md-3">
+            <div class="card kpi-card blue">
+              <div class="card-body">
+                <div class="kpi-value" id="kpi-clienti">-</div>
+                <div class="kpi-label">Clienti Attivi</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card kpi-card green">
+              <div class="card-body">
+                <div class="kpi-value" id="kpi-pipeline">-</div>
+                <div class="kpi-label">In Pipeline</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card kpi-card orange">
+              <div class="card-body">
+                <div class="kpi-value" id="kpi-aum">-</div>
+                <div class="kpi-label">AUM Gestito</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="card kpi-card purple">
+              <div class="card-body">
+                <div class="kpi-value" id="kpi-revenue">-</div>
+                <div class="kpi-label">Revenue Annua</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Target Progress -->
+        <div class="card mb-4">
+          <div class="card-body">
+            <div class="d-flex justify-content-between mb-2">
+              <span class="fw-semibold">Progresso verso Target AUM</span>
+              <span id="target-percent">0%</span>
+            </div>
+            <div class="progress progress-target">
+              <div class="progress-bar bg-primary" id="target-bar" style="width: 0%"></div>
+            </div>
+            <small class="text-muted">Target: 15.000.000</small>
+          </div>
+        </div>
+
+        <!-- Funnel + Clusters -->
+        <div class="row g-4">
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">Funnel Pipeline</div>
+              <div class="card-body" id="funnel-chart"></div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">Per Cluster</div>
+              <div class="card-body" id="cluster-stats"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contatti Page -->
+      <div id="page-contatti" class="page">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h4 class="mb-0">Contatti</h4>
+          <button class="btn btn-primary" onclick="showAddModal()">
+            <i class="bi bi-plus-lg"></i> Nuovo Contatto
+          </button>
+        </div>
+
+        <!-- Filters -->
+        <div class="card mb-4">
+          <div class="card-body">
+            <div class="row g-3">
+              <div class="col-md-4">
+                <input type="text" class="form-control search-box" id="search-input" placeholder="Cerca...">
+              </div>
+              <div class="col-md-3">
+                <select class="form-select" id="filter-tipo">
+                  <option value="">Tutti i tipi</option>
+                  <option value="Potenziale">Potenziale</option>
+                  <option value="Gia Cliente">Gia Cliente</option>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <select class="form-select" id="filter-cluster">
+                  <option value="">Tutti i cluster</option>
+                  <option value="Imprenditore">Imprenditore</option>
+                  <option value="Libero Professionista">Libero Professionista</option>
+                  <option value="Dipendente">Dipendente</option>
+                  <option value="Azienda">Azienda</option>
+                </select>
+              </div>
+              <div class="col-md-2">
+                <button class="btn btn-outline-primary w-100" onclick="loadContatti()">
+                  <i class="bi bi-search"></i> Filtra
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contacts Table -->
+        <div class="card">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Email</th>
+                    <th>Tipo</th>
+                    <th>Cluster</th>
+                    <th>Stadio</th>
+                    <th>AUM</th>
+                    <th>Funnel</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody id="contatti-table"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Funnel Page -->
+      <div id="page-funnel" class="page">
+        <h4 class="mb-4">Email Funnel</h4>
+
+        <div class="row g-4">
+          <div class="col-md-8">
+            <div class="card">
+              <div class="card-header d-flex justify-content-between">
+                <span>Contatti da Contattare</span>
+                <select class="form-select form-select-sm w-auto" id="funnel-filter">
+                  <option value="">Tutti</option>
+                  <option value="Non avviato">Non avviato</option>
+                  <option value="Step 1 inviato">Step 1 inviato</option>
+                  <option value="Step 2 inviato">Step 2 inviato</option>
+                  <option value="Step 3 inviato">Step 3 inviato</option>
+                </select>
+              </div>
+              <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                  <thead>
+                    <tr>
+                      <th>Nome</th>
+                      <th>Email</th>
+                      <th>Cluster</th>
+                      <th>Status Funnel</th>
+                      <th>Azione</th>
+                    </tr>
+                  </thead>
+                  <tbody id="funnel-table"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card">
+              <div class="card-header">Log Invii Recenti</div>
+              <div class="card-body" id="log-invii">
+                <p class="text-muted">Nessun invio recente</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Add/Edit Modal -->
+  <div class="modal fade" id="contactModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalTitle">Nuovo Contatto</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="contactForm">
+            <input type="hidden" id="contact-id">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Nome</label>
+                <input type="text" class="form-control" id="contact-nome" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Cognome</label>
+                <input type="text" class="form-control" id="contact-cognome">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" id="contact-email">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Telefono</label>
+                <input type="text" class="form-control" id="contact-telefono">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Azienda</label>
+                <input type="text" class="form-control" id="contact-azienda">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Tipo Cliente</label>
+                <select class="form-select" id="contact-tipo">
+                  <option value="Potenziale">Potenziale</option>
+                  <option value="Gia Cliente">Gia Cliente</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Cluster</label>
+                <select class="form-select" id="contact-cluster">
+                  <option value="">Seleziona...</option>
+                  <option value="Imprenditore">Imprenditore</option>
+                  <option value="Libero Professionista">Libero Professionista</option>
+                  <option value="Dipendente">Dipendente</option>
+                  <option value="Azienda">Azienda</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Stadio Pipeline</label>
+                <select class="form-select" id="contact-stadio">
+                  <option value="Prospect">Prospect</option>
+                  <option value="Lead">Lead</option>
+                  <option value="Primo Contatto">Primo Contatto</option>
+                  <option value="Appuntamento">Appuntamento</option>
+                  <option value="Secondo Appuntamento">Secondo Appuntamento</option>
+                  <option value="Chiusura">Chiusura</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Probabilita %</label>
+                <input type="number" class="form-control" id="contact-prob" min="0" max="100" value="10">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Somma Potenziale</label>
+                <input type="number" class="form-control" id="contact-potenziale" min="0" value="0">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Somma Versata</label>
+                <input type="number" class="form-control" id="contact-versata" min="0" value="0">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Fonte Acquisizione</label>
+                <input type="text" class="form-control" id="contact-fonte">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Prossima Azione</label>
+                <input type="text" class="form-control" id="contact-azione">
+              </div>
+              <div class="col-12">
+                <label class="form-label">Note</label>
+                <textarea class="form-control" id="contact-note" rows="2"></textarea>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+          <button type="button" class="btn btn-primary" onclick="saveContact()">Salva</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let contactModal;
+    let allContatti = [];
+
+    document.addEventListener('DOMContentLoaded', function() {
+      contactModal = new bootstrap.Modal(document.getElementById('contactModal'));
+
+      // Navigation
+      document.querySelectorAll('[data-page]').forEach(link => {
+        link.addEventListener('click', function(e) {
+          e.preventDefault();
+          const page = this.dataset.page;
+          document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+          this.classList.add('active');
+          document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+          document.getElementById('page-' + page).classList.add('active');
+
+          if (page === 'dashboard') loadDashboard();
+          else if (page === 'contatti') loadContatti();
+          else if (page === 'funnel') loadFunnel();
+        });
+      });
+
+      // Load initial data
+      loadDashboard();
+    });
+
+    function apiCall(action, data = {}) {
+      return new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(reject)
+          .doPost({ postData: { contents: JSON.stringify({ action, ...data }) } });
+      });
+    }
+
+    function formatCurrency(value) {
+      return new Intl.NumberFormat('it-IT', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      }).format(value);
+    }
+
+    function formatNumber(value) {
+      return new Intl.NumberFormat('it-IT').format(value);
+    }
+
+    // Dashboard
+    function loadDashboard() {
+      google.script.run
+        .withSuccessHandler(renderDashboard)
+        .withFailureHandler(e => console.error(e))
+        .getDashboard();
+    }
+
+    function renderDashboard(data) {
+      document.getElementById('kpi-clienti').textContent = data.kpi.clienti;
+      document.getElementById('kpi-pipeline').textContent = data.kpi.pipeline;
+      document.getElementById('kpi-aum').textContent = formatCurrency(data.kpi.aumGestito);
+      document.getElementById('kpi-revenue').textContent = formatCurrency(data.kpi.revTotale);
+
+      // Target
+      document.getElementById('target-percent').textContent = data.kpi.percentualeTarget + '%';
+      document.getElementById('target-bar').style.width = Math.min(data.kpi.percentualeTarget, 100) + '%';
+
+      // Funnel
+      const maxFunnel = Math.max(...data.funnelPerStadio.map(f => f.count), 1);
+      document.getElementById('funnel-chart').innerHTML = data.funnelPerStadio.map(f => `
+        <div class="mb-2">
+          <div class="d-flex justify-content-between mb-1">
+            <small>${f.stadio}</small>
+            <small>${f.count}</small>
+          </div>
+          <div class="funnel-bar" style="width: ${(f.count / maxFunnel * 100)}%">${f.count}</div>
+        </div>
+      `).join('');
+
+      // Clusters
+      const clusterColors = {
+        'Imprenditore': 'imprenditore',
+        'Libero Professionista': 'professionista',
+        'Dipendente': 'dipendente',
+        'Azienda': 'azienda'
+      };
+      document.getElementById('cluster-stats').innerHTML = data.perCluster.map(c => `
+        <div class="card cluster-card cluster-${clusterColors[c.cluster] || ''} mb-2">
+          <div class="card-body py-2">
+            <div class="d-flex justify-content-between">
+              <span class="fw-semibold">${c.cluster}</span>
+              <span>${formatCurrency(c.aumGestito)}</span>
+            </div>
+            <small class="text-muted">${c.clienti} clienti, ${c.potenziali} potenziali</small>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Contatti
+    function loadContatti() {
+      const filters = {
+        search: document.getElementById('search-input').value,
+        tipoCliente: document.getElementById('filter-tipo').value,
+        cluster: document.getElementById('filter-cluster').value
+      };
+
+      google.script.run
+        .withSuccessHandler(renderContatti)
+        .withFailureHandler(e => console.error(e))
+        .getContatti(filters);
+    }
+
+    function renderContatti(data) {
+      allContatti = data.contatti;
+      const stageClasses = {
+        'Prospect': 'stage-prospect',
+        'Lead': 'stage-lead',
+        'Primo Contatto': 'stage-primo',
+        'Appuntamento': 'stage-app',
+        'Secondo Appuntamento': 'stage-app',
+        'Chiusura': 'stage-chiusura'
+      };
+
+      document.getElementById('contatti-table').innerHTML = data.contatti.map(c => `
+        <tr>
+          <td><strong>${c.Nome || ''} ${c.Cognome || ''}</strong></td>
+          <td>${c.Email || '-'}</td>
+          <td>${c.TipoCliente || 'Potenziale'}</td>
+          <td>${c.ClusterCliente || '-'}</td>
+          <td><span class="badge badge-stage ${stageClasses[c.StadioPipeline] || ''}">${c.StadioPipeline || '-'}</span></td>
+          <td>${formatCurrency(c.SommaVersata || c.SommaPotenziale || 0)}</td>
+          <td><small>${c.FunnelStatus || 'Non avviato'}</small></td>
+          <td>
+            <button class="btn btn-sm btn-outline-primary btn-action" onclick="editContact('${c.ID}')">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger btn-action" onclick="deleteContact('${c.ID}')">
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+        </tr>
+      `).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">Nessun contatto trovato</td></tr>';
+    }
+
+    function showAddModal() {
+      document.getElementById('modalTitle').textContent = 'Nuovo Contatto';
+      document.getElementById('contactForm').reset();
+      document.getElementById('contact-id').value = '';
+      contactModal.show();
+    }
+
+    function editContact(id) {
+      const c = allContatti.find(x => x.ID === id);
+      if (!c) return;
+
+      document.getElementById('modalTitle').textContent = 'Modifica Contatto';
+      document.getElementById('contact-id').value = c.ID;
+      document.getElementById('contact-nome').value = c.Nome || '';
+      document.getElementById('contact-cognome').value = c.Cognome || '';
+      document.getElementById('contact-email').value = c.Email || '';
+      document.getElementById('contact-telefono').value = c.Telefono || '';
+      document.getElementById('contact-azienda').value = c.Azienda || '';
+      document.getElementById('contact-tipo').value = c.TipoCliente || 'Potenziale';
+      document.getElementById('contact-cluster').value = c.ClusterCliente || '';
+      document.getElementById('contact-stadio').value = c.StadioPipeline || 'Prospect';
+      document.getElementById('contact-prob').value = c.Probabilita || 10;
+      document.getElementById('contact-potenziale').value = c.SommaPotenziale || 0;
+      document.getElementById('contact-versata').value = c.SommaVersata || 0;
+      document.getElementById('contact-fonte').value = c.FonteAcquisizione || '';
+      document.getElementById('contact-azione').value = c.ProssimaAzione || '';
+      document.getElementById('contact-note').value = c.Note || '';
+
+      contactModal.show();
+    }
+
+    function saveContact() {
+      const id = document.getElementById('contact-id').value;
+      const contatto = {
+        nome: document.getElementById('contact-nome').value,
+        cognome: document.getElementById('contact-cognome').value,
+        email: document.getElementById('contact-email').value,
+        telefono: document.getElementById('contact-telefono').value,
+        azienda: document.getElementById('contact-azienda').value,
+        tipoCliente: document.getElementById('contact-tipo').value,
+        clusterCliente: document.getElementById('contact-cluster').value,
+        stadioPipeline: document.getElementById('contact-stadio').value,
+        probabilita: parseInt(document.getElementById('contact-prob').value) || 10,
+        sommaPotenziale: parseFloat(document.getElementById('contact-potenziale').value) || 0,
+        sommaVersata: parseFloat(document.getElementById('contact-versata').value) || 0,
+        fonte: document.getElementById('contact-fonte').value,
+        prossimaAzione: document.getElementById('contact-azione').value,
+        note: document.getElementById('contact-note').value
+      };
+
+      const handler = result => {
+        if (result.error) {
+          alert('Errore: ' + result.error);
+        } else {
+          contactModal.hide();
+          loadContatti();
+        }
+      };
+
+      if (id) {
+        const updates = {
+          Nome: contatto.nome,
+          Cognome: contatto.cognome,
+          Email: contatto.email,
+          Telefono: contatto.telefono,
+          Azienda: contatto.azienda,
+          TipoCliente: contatto.tipoCliente,
+          ClusterCliente: contatto.clusterCliente,
+          StadioPipeline: contatto.stadioPipeline,
+          Probabilita: contatto.probabilita,
+          SommaPotenziale: contatto.sommaPotenziale,
+          SommaVersata: contatto.sommaVersata,
+          FonteAcquisizione: contatto.fonte,
+          ProssimaAzione: contatto.prossimaAzione,
+          Note: contatto.note
+        };
+        google.script.run.withSuccessHandler(handler).withFailureHandler(e => alert(e)).updateContatto(id, updates);
+      } else {
+        google.script.run.withSuccessHandler(handler).withFailureHandler(e => alert(e)).addContatto(contatto);
+      }
+    }
+
+    function deleteContact(id) {
+      if (!confirm('Sei sicuro di voler eliminare questo contatto?')) return;
+
+      google.script.run
+        .withSuccessHandler(result => {
+          if (result.error) alert('Errore: ' + result.error);
+          else loadContatti();
+        })
+        .withFailureHandler(e => alert(e))
+        .deleteContatto(id);
+    }
+
+    // Funnel
+    function loadFunnel() {
+      google.script.run
+        .withSuccessHandler(renderFunnel)
+        .withFailureHandler(e => console.error(e))
+        .getContatti({ tipoCliente: 'Potenziale' });
+    }
+
+    function renderFunnel(data) {
+      const filter = document.getElementById('funnel-filter').value;
+      let contatti = data.contatti.filter(c => c.Email && c.FunnelStatus !== 'Risposto' && c.FunnelStatus !== 'Step 4 inviato');
+
+      if (filter) {
+        contatti = contatti.filter(c => (c.FunnelStatus || 'Non avviato') === filter);
+      }
+
+      document.getElementById('funnel-table').innerHTML = contatti.map(c => `
+        <tr>
+          <td>${c.Nome || ''} ${c.Cognome || ''}</td>
+          <td>${c.Email || '-'}</td>
+          <td>${c.ClusterCliente || '-'}</td>
+          <td><small>${c.FunnelStatus || 'Non avviato'}</small></td>
+          <td>
+            <button class="btn btn-sm btn-primary" onclick="sendEmail('${c.ID}')">
+              <i class="bi bi-send"></i> Invia
+            </button>
+            <button class="btn btn-sm btn-outline-success" onclick="markResponded('${c.ID}')" title="Segna come risposto">
+              <i class="bi bi-check-lg"></i>
+            </button>
+          </td>
+        </tr>
+      `).join('') || '<tr><td colspan="5" class="text-center text-muted py-4">Nessun contatto nel funnel</td></tr>';
+    }
+
+    function sendEmail(contattoId) {
+      if (!confirm('Inviare l\'email a questo contatto?')) return;
+
+      google.script.run
+        .withSuccessHandler(result => {
+          if (result.error) {
+            alert('Errore: ' + result.error);
+          } else {
+            alert(result.message);
+            loadFunnel();
+          }
+        })
+        .withFailureHandler(e => alert('Errore: ' + e))
+        .sendFunnelEmail(contattoId);
+    }
+
+    function markResponded(contattoId) {
+      google.script.run
+        .withSuccessHandler(result => {
+          if (result.error) alert('Errore: ' + result.error);
+          else loadFunnel();
+        })
+        .withFailureHandler(e => alert(e))
+        .markAsResponded(contattoId);
+    }
+
+    // Search on enter
+    document.getElementById('search-input')?.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') loadContatti();
+    });
+
+    document.getElementById('funnel-filter')?.addEventListener('change', loadFunnel);
+  </script>
+</body>
+</html>
