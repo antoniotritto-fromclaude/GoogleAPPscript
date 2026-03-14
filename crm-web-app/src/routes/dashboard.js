@@ -32,7 +32,7 @@ router.get('/', (req, res) => {
       WHERE stage NOT IN ('Cliente Attivo', 'Chiuso Perso')
     `).get();
 
-    // Pipeline per stage
+    // Pipeline per stage (allineato al foglio Excel)
     const pipelinePerStage = db.prepare(`
       SELECT stage, COUNT(*) as count, COALESCE(SUM(aum_previsto), 0) as valore
       FROM pipeline
@@ -40,14 +40,13 @@ router.get('/', (req, res) => {
       GROUP BY stage
       ORDER BY
         CASE stage
-          WHEN 'Lead' THEN 1
-          WHEN 'Contatto' THEN 2
-          WHEN 'Qualificato' THEN 3
-          WHEN 'Proposta Inviata' THEN 4
-          WHEN 'Negoziazione' THEN 5
-          WHEN 'Contratto Inviato' THEN 6
-          WHEN 'Contratto Firmato' THEN 7
-          WHEN 'Cliente Attivo' THEN 8
+          WHEN 'Prospect' THEN 1
+          WHEN 'Lead' THEN 2
+          WHEN 'Primo Contatto' THEN 3
+          WHEN 'Appuntamento' THEN 4
+          WHEN 'Secondo Appuntamento' THEN 5
+          WHEN 'Chiusura' THEN 6
+          WHEN 'Cliente Attivo' THEN 7
         END
     `).all();
 
@@ -221,6 +220,264 @@ router.get('/performance', (req, res) => {
     res.json({ performance, chiamatePerAgente });
   } catch (error) {
     res.status(500).json({ error: 'Errore nel recupero performance' });
+  }
+});
+
+// GET /api/dashboard/revenue - Dashboard Revenue completo (dal foglio Excel)
+router.get('/revenue', (req, res) => {
+  try {
+    // Clienti attivi (tipo_cliente = 'Gia Cliente' o is_cliente = 1)
+    const clienti = db.prepare(`
+      SELECT COUNT(*) as count FROM contatti
+      WHERE is_cliente = 1 OR tipo_cliente = 'Gia Cliente'
+    `).get();
+
+    // Pipeline (tipo_cliente = 'Potenziale')
+    const pipeline = db.prepare(`
+      SELECT COUNT(*) as count FROM contatti
+      WHERE tipo_cliente = 'Potenziale' OR (is_cliente = 0 AND tipo_cliente IS NULL)
+    `).get();
+
+    // AUM Gestito (somma somma_versata dei clienti)
+    const aumGestito = db.prepare(`
+      SELECT COALESCE(SUM(somma_versata), 0) as totale FROM contatti
+      WHERE is_cliente = 1 OR tipo_cliente = 'Gia Cliente'
+    `).get();
+
+    // AUM Pipeline (somma somma_potenziale dei potenziali)
+    const aumPipeline = db.prepare(`
+      SELECT COALESCE(SUM(somma_potenziale), 0) as totale FROM contatti
+      WHERE tipo_cliente = 'Potenziale' OR (is_cliente = 0 AND tipo_cliente IS NULL)
+    `).get();
+
+    // Revenue Clienti (somma management_fee + iunp_36)
+    const revClienti = db.prepare(`
+      SELECT COALESCE(SUM(management_fee), 0) as mgmt, COALESCE(SUM(iunp_36), 0) as iunp FROM contatti
+      WHERE is_cliente = 1 OR tipo_cliente = 'Gia Cliente'
+    `).get();
+
+    // Revenue Pipeline (calcolata sulla base di probabilita)
+    const revPipeline = db.prepare(`
+      SELECT COALESCE(SUM(somma_potenziale * probabilita / 100 * 0.0045), 0) as totale FROM contatti
+      WHERE tipo_cliente = 'Potenziale' OR (is_cliente = 0 AND tipo_cliente IS NULL)
+    `).get();
+
+    // Target (configurabile, default 15M euro)
+    let target = db.prepare('SELECT target_aum FROM target_revenue WHERE anno = ?').get(new Date().getFullYear());
+    if (!target) {
+      target = { target_aum: 15000000 };
+    }
+
+    // Revenue per Tipo Fee
+    const revPerTipoFee = db.prepare(`
+      SELECT
+        tipo_fee,
+        COALESCE(SUM(management_fee), 0) as management_fee_totale,
+        COALESCE(SUM(iunp_36), 0) as iunp_totale,
+        COUNT(*) as count
+      FROM contatti
+      WHERE (is_cliente = 1 OR tipo_cliente = 'Gia Cliente') AND tipo_fee IS NOT NULL
+      GROUP BY tipo_fee
+    `).all();
+
+    // Breakdown per Cluster
+    const perCluster = db.prepare(`
+      SELECT
+        COALESCE(cluster_cliente, 'Non assegnato') as cluster,
+        SUM(CASE WHEN is_cliente = 1 OR tipo_cliente = 'Gia Cliente' THEN 1 ELSE 0 END) as clienti,
+        SUM(CASE WHEN tipo_cliente = 'Potenziale' OR (is_cliente = 0 AND tipo_cliente IS NULL) THEN 1 ELSE 0 END) as potenziali,
+        COALESCE(SUM(CASE WHEN is_cliente = 1 OR tipo_cliente = 'Gia Cliente' THEN somma_versata ELSE 0 END), 0) as aum_gestito,
+        COALESCE(SUM(CASE WHEN tipo_cliente = 'Potenziale' THEN somma_potenziale ELSE 0 END), 0) as aum_pipeline
+      FROM contatti
+      GROUP BY cluster_cliente
+    `).all();
+
+    const revTotale = (revClienti.mgmt + revClienti.iunp) + revPipeline.totale;
+    const percentualeTarget = target.target_aum > 0 ? ((aumGestito.totale + aumPipeline.totale) / target.target_aum * 100) : 0;
+
+    res.json({
+      kpi: {
+        clienti: clienti.count,
+        pipeline: pipeline.count,
+        aumGestito: aumGestito.totale,
+        aumPipeline: aumPipeline.totale,
+        revClienti: revClienti.mgmt + revClienti.iunp,
+        revPipeline: revPipeline.totale,
+        revTotale: revTotale,
+        targetAum: target.target_aum,
+        percentualeTarget: Math.round(percentualeTarget * 100) / 100
+      },
+      revenuePerTipoFee: revPerTipoFee,
+      breakdownPerCluster: perCluster,
+      dettaglioFee: {
+        managementFeeRate: 0.45,
+        iunpRate: 18,
+        managementFeeTotale: revClienti.mgmt,
+        iunpTotale: revClienti.iunp
+      }
+    });
+  } catch (error) {
+    console.error('Errore dashboard revenue:', error);
+    res.status(500).json({ error: 'Errore nel recupero dashboard revenue' });
+  }
+});
+
+// GET /api/dashboard/conversione - Analisi Conversione Funnel
+router.get('/conversione', (req, res) => {
+  try {
+    // Funnel di conversione per stadio pipeline
+    const stadi = ['Prospect', 'Lead', 'Primo Contatto', 'Appuntamento', 'Secondo Appuntamento', 'Chiusura'];
+    const totaleContatti = db.prepare('SELECT COUNT(*) as count FROM contatti WHERE tipo_cliente = "Potenziale"').get();
+
+    const funnelPerStadio = stadi.map((stadio, idx) => {
+      const count = db.prepare('SELECT COUNT(*) as count FROM contatti WHERE stadio_pipeline = ?').get(stadio);
+      const percentualeTotale = totaleContatti.count > 0 ? (count.count / totaleContatti.count * 100) : 0;
+
+      // Conversione stadio (rispetto allo stadio precedente)
+      let conversioneStadio = 100;
+      if (idx > 0) {
+        const stadioPrecedente = stadi[idx - 1];
+        const countPrec = db.prepare('SELECT COUNT(*) as count FROM contatti WHERE stadio_pipeline = ?').get(stadioPrecedente);
+        conversioneStadio = countPrec.count > 0 ? (count.count / countPrec.count * 100) : 0;
+      }
+
+      return {
+        stadio,
+        count: count.count,
+        percentualeTotale: Math.round(percentualeTotale * 100) / 100,
+        conversioneStadio: Math.round(conversioneStadio * 100) / 100
+      };
+    });
+
+    // Clienti acquisiti
+    const clientiAcquisiti = db.prepare(`
+      SELECT COUNT(*) as count FROM contatti
+      WHERE is_cliente = 1 OR tipo_cliente = 'Gia Cliente'
+    `).get();
+
+    // Conversione per fonte
+    const conversionePerFonte = db.prepare(`
+      SELECT
+        COALESCE(fonte_acquisizione, fonte, 'Non specificata') as fonte,
+        COUNT(*) as totali,
+        SUM(CASE WHEN is_cliente = 1 OR tipo_cliente = 'Gia Cliente' THEN 1 ELSE 0 END) as chiusi,
+        COALESCE(SUM(CASE WHEN is_cliente = 1 OR tipo_cliente = 'Gia Cliente' THEN somma_versata ELSE 0 END), 0) as aum_chiusi
+      FROM contatti
+      GROUP BY COALESCE(fonte_acquisizione, fonte)
+    `).all();
+
+    conversionePerFonte.forEach(f => {
+      f.tassoConversione = f.totali > 0 ? Math.round(f.chiusi / f.totali * 100 * 100) / 100 : 0;
+    });
+
+    res.json({
+      funnelPerStadio,
+      clientiAcquisiti: clientiAcquisiti.count,
+      tassoConversioneGlobale: totaleContatti.count > 0 ?
+        Math.round(clientiAcquisiti.count / (totaleContatti.count + clientiAcquisiti.count) * 100 * 100) / 100 : 0,
+      conversionePerFonte
+    });
+  } catch (error) {
+    console.error('Errore analisi conversione:', error);
+    res.status(500).json({ error: 'Errore nel recupero analisi conversione' });
+  }
+});
+
+// GET /api/dashboard/cashflow - Previsioni Cash Flow 12 mesi
+router.get('/cashflow', (req, res) => {
+  try {
+    const oggi = new Date();
+    const mesi = [];
+
+    // Genera previsioni per i prossimi 12 mesi
+    for (let i = 0; i < 12; i++) {
+      const data = new Date(oggi.getFullYear(), oggi.getMonth() + i, 1);
+      const meseStr = data.toISOString().substring(0, 7);
+      const nomeMese = data.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+
+      // Revenue certa (clienti attivi - management fee mensile)
+      const revenueCerta = db.prepare(`
+        SELECT COALESCE(SUM(management_fee), 0) / 12 as mensile FROM contatti
+        WHERE is_cliente = 1 OR tipo_cliente = 'Gia Cliente'
+      `).get();
+
+      // Revenue probabile (pipeline con prob >= 70%)
+      const revenueProbabile = db.prepare(`
+        SELECT COALESCE(SUM(somma_potenziale * probabilita / 100 * 0.0045), 0) / 12 as mensile FROM contatti
+        WHERE (tipo_cliente = 'Potenziale') AND probabilita >= 70
+      `).get();
+
+      // Revenue potenziale (pipeline con prob < 70%)
+      const revenuePotenziale = db.prepare(`
+        SELECT COALESCE(SUM(somma_potenziale * probabilita / 100 * 0.0045), 0) / 12 as mensile FROM contatti
+        WHERE (tipo_cliente = 'Potenziale') AND probabilita < 70
+      `).get();
+
+      mesi.push({
+        mese: meseStr,
+        nomeMese,
+        revenueCerta: Math.round(revenueCerta.mensile * 100) / 100,
+        revenueProbabile: Math.round(revenueProbabile.mensile * 100) / 100,
+        revenuePotenziale: Math.round(revenuePotenziale.mensile * 100) / 100,
+        totale: Math.round((revenueCerta.mensile + revenueProbabile.mensile + revenuePotenziale.mensile) * 100) / 100
+      });
+    }
+
+    // Revenue ricorrente annuale
+    const revenueRicorrente = db.prepare(`
+      SELECT COALESCE(SUM(management_fee), 0) as annuale FROM contatti
+      WHERE is_cliente = 1 OR tipo_cliente = 'Gia Cliente'
+    `).get();
+
+    res.json({
+      previsioni: mesi,
+      revenueRicorrenteAnnua: revenueRicorrente.annuale,
+      revenueRicorrenteMensile: Math.round(revenueRicorrente.annuale / 12 * 100) / 100
+    });
+  } catch (error) {
+    console.error('Errore cashflow:', error);
+    res.status(500).json({ error: 'Errore nel recupero previsioni cashflow' });
+  }
+});
+
+// POST /api/dashboard/target - Imposta target annuale
+router.post('/target', (req, res) => {
+  try {
+    const { anno, target_aum, management_fee_rate, iunp_rate } = req.body;
+    const annoTarget = anno || new Date().getFullYear();
+
+    // Verifica se esiste
+    const existing = db.prepare('SELECT id FROM target_revenue WHERE anno = ?').get(annoTarget);
+
+    if (existing) {
+      db.prepare(`
+        UPDATE target_revenue SET target_aum = ?, management_fee_rate = ?, iunp_rate = ?
+        WHERE anno = ?
+      `).run(
+        target_aum || 15000000,
+        management_fee_rate || 0.45,
+        iunp_rate || 18,
+        annoTarget
+      );
+    } else {
+      db.prepare(`
+        INSERT INTO target_revenue (anno, target_aum, management_fee_rate, iunp_rate)
+        VALUES (?, ?, ?, ?)
+      `).run(
+        annoTarget,
+        target_aum || 15000000,
+        management_fee_rate || 0.45,
+        iunp_rate || 18
+      );
+    }
+
+    const { saveDatabase } = require('../models/database');
+    saveDatabase();
+
+    res.json({ success: true, message: 'Target salvato' });
+  } catch (error) {
+    console.error('Errore salvataggio target:', error);
+    res.status(500).json({ error: 'Errore nel salvataggio target' });
   }
 });
 

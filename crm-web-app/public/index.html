@@ -66,10 +66,27 @@
             <i class="bi bi-envelope"></i>
             <span>Email Marketing</span>
           </div>
+          <div class="nav-item" data-page="funnel">
+            <i class="bi bi-send"></i>
+            <span>Funnel Email</span>
+            <span class="nav-badge" id="badge-funnel">0</span>
+          </div>
         </div>
 
         <div class="nav-section">
           <div class="nav-section-title">Analisi</div>
+          <div class="nav-item" data-page="revenue">
+            <i class="bi bi-cash-stack"></i>
+            <span>Dashboard Revenue</span>
+          </div>
+          <div class="nav-item" data-page="conversione">
+            <i class="bi bi-graph-down-arrow"></i>
+            <span>Analisi Conversione</span>
+          </div>
+          <div class="nav-item" data-page="cashflow">
+            <i class="bi bi-calendar3"></i>
+            <span>Cash Flow 12 mesi</span>
+          </div>
           <div class="nav-item" data-page="analytics">
             <i class="bi bi-bar-chart-line"></i>
             <span>Analytics</span>
@@ -993,6 +1010,336 @@ Usa {{nome}} per personalizzare con il nome del destinatario"></textarea>
       </div>
     </div>
   </div>
+
+      <!-- Funnel Email Page -->
+      <div id="page-funnel" class="page-content hidden">
+        <div class="page-header">
+          <div>
+            <h1>Funnel Email Automatico</h1>
+            <p class="text-muted">Sistema di email marketing basato su cluster cliente</p>
+          </div>
+          <button class="btn btn-primary" onclick="initFunnelTemplates()">
+            <i class="bi bi-download"></i> Carica Template Predefiniti
+          </button>
+        </div>
+
+        <!-- Stats Funnel -->
+        <div class="kpi-grid" style="margin-bottom: var(--spacing-lg);">
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Lead Pronti</span>
+              <div class="kpi-icon green"><i class="bi bi-envelope-check"></i></div>
+            </div>
+            <div class="kpi-value" id="funnel-ready">0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Invii Oggi</span>
+              <div class="kpi-icon blue"><i class="bi bi-send"></i></div>
+            </div>
+            <div class="kpi-value" id="funnel-oggi">0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Invii Settimana</span>
+              <div class="kpi-icon purple"><i class="bi bi-calendar-week"></i></div>
+            </div>
+            <div class="kpi-value" id="funnel-settimana">0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Risposte</span>
+              <div class="kpi-icon orange"><i class="bi bi-reply"></i></div>
+            </div>
+            <div class="kpi-value" id="funnel-risposte">0</div>
+          </div>
+        </div>
+
+        <!-- Lead pronti per invio -->
+        <div class="card" style="margin-bottom: var(--spacing-lg);">
+          <div class="card-header">
+            <h3 class="card-title">Lead Pronti per Invio</h3>
+            <button class="btn btn-sm btn-secondary" onclick="loadFunnelLeads()">
+              <i class="bi bi-arrow-clockwise"></i> Aggiorna
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Email</th>
+                    <th>Cluster</th>
+                    <th>Prossimo Step</th>
+                    <th>Ultimo Invio</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody id="funnel-leads-table">
+                  <tr><td colspan="6" class="text-center">Caricamento...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Template per Cluster -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Template Email per Cluster</h3>
+          </div>
+          <div class="card-body">
+            <div class="tabs" style="margin-bottom: var(--spacing-md);">
+              <button class="tab active" onclick="showClusterTemplates('Imprenditore', this)">Imprenditore</button>
+              <button class="tab" onclick="showClusterTemplates('Libero Professionista', this)">Professionista</button>
+              <button class="tab" onclick="showClusterTemplates('Dipendente', this)">Dipendente</button>
+            </div>
+            <div id="cluster-templates-container">
+              <p class="text-muted">Seleziona un cluster per vedere i template</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dashboard Revenue Page -->
+      <div id="page-revenue" class="page-content hidden">
+        <div class="page-header">
+          <div>
+            <h1>Dashboard Revenue</h1>
+            <p class="text-muted">KPI e analisi revenue - Private Banker CRM</p>
+          </div>
+          <button class="btn btn-secondary" onclick="loadRevenueData()">
+            <i class="bi bi-arrow-clockwise"></i> Aggiorna
+          </button>
+        </div>
+
+        <!-- KPI Revenue -->
+        <div class="kpi-grid" style="margin-bottom: var(--spacing-lg);">
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Clienti</span>
+              <div class="kpi-icon green"><i class="bi bi-people-fill"></i></div>
+            </div>
+            <div class="kpi-value" id="rev-clienti">0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Pipeline</span>
+              <div class="kpi-icon blue"><i class="bi bi-funnel-fill"></i></div>
+            </div>
+            <div class="kpi-value" id="rev-pipeline">0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">AUM Gestito</span>
+              <div class="kpi-icon purple"><i class="bi bi-wallet2"></i></div>
+            </div>
+            <div class="kpi-value" id="rev-aum-gestito">-</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">AUM Pipeline</span>
+              <div class="kpi-icon orange"><i class="bi bi-hourglass-split"></i></div>
+            </div>
+            <div class="kpi-value" id="rev-aum-pipeline">-</div>
+          </div>
+        </div>
+
+        <div class="kpi-grid" style="margin-bottom: var(--spacing-lg);">
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Rev. Clienti</span>
+              <div class="kpi-icon green"><i class="bi bi-currency-euro"></i></div>
+            </div>
+            <div class="kpi-value" id="rev-clienti-val">-</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Rev. Pipeline</span>
+              <div class="kpi-icon blue"><i class="bi bi-currency-euro"></i></div>
+            </div>
+            <div class="kpi-value" id="rev-pipeline-val">-</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Rev. Totale</span>
+              <div class="kpi-icon purple"><i class="bi bi-cash-stack"></i></div>
+            </div>
+            <div class="kpi-value" id="rev-totale">-</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-header">
+              <span class="kpi-title">Target 15M</span>
+              <div class="kpi-icon orange"><i class="bi bi-bullseye"></i></div>
+            </div>
+            <div class="kpi-value" id="rev-target">0%</div>
+          </div>
+        </div>
+
+        <!-- Revenue per Tipo Fee -->
+        <div class="dashboard-grid">
+          <div class="card card-half">
+            <div class="card-header">
+              <h3 class="card-title">Revenue per Tipo Fee</h3>
+            </div>
+            <div class="card-body">
+              <div class="table-container">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Tipo Fee</th>
+                      <th>Revenue Annua</th>
+                      <th>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rev-tipo-fee-table">
+                    <tr>
+                      <td>Management Fee (0.45%)</td>
+                      <td id="rev-mgmt-fee">-</td>
+                      <td>Ricorrente</td>
+                    </tr>
+                    <tr>
+                      <td>IUNP 36 (0.18%)</td>
+                      <td id="rev-iunp">-</td>
+                      <td>Una tantum</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Breakdown per Cluster -->
+          <div class="card card-half">
+            <div class="card-header">
+              <h3 class="card-title">Breakdown per Cluster</h3>
+            </div>
+            <div class="card-body">
+              <div class="table-container">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Cluster</th>
+                      <th>Clienti</th>
+                      <th>Potenziali</th>
+                      <th>AUM Gestito</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rev-cluster-table">
+                    <tr><td colspan="4" class="text-center">Caricamento...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analisi Conversione Page -->
+      <div id="page-conversione" class="page-content hidden">
+        <div class="page-header">
+          <div>
+            <h1>Analisi Conversione</h1>
+            <p class="text-muted">Funnel e performance di conversione</p>
+          </div>
+        </div>
+
+        <!-- Funnel di Conversione -->
+        <div class="card" style="margin-bottom: var(--spacing-lg);">
+          <div class="card-header">
+            <h3 class="card-title">Funnel di Conversione</h3>
+          </div>
+          <div class="card-body">
+            <div class="funnel-conversion" id="funnel-conversion-container">
+              <p class="text-muted">Caricamento...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Conversione per Fonte -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Conversione per Fonte</h3>
+          </div>
+          <div class="card-body">
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Fonte</th>
+                    <th>Totali</th>
+                    <th>Chiusi</th>
+                    <th>Tasso Conv.</th>
+                    <th>AUM Chiusi</th>
+                  </tr>
+                </thead>
+                <tbody id="conv-fonte-table">
+                  <tr><td colspan="5" class="text-center">Caricamento...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cash Flow Page -->
+      <div id="page-cashflow" class="page-content hidden">
+        <div class="page-header">
+          <div>
+            <h1>Previsioni Cash Flow</h1>
+            <p class="text-muted">Proiezioni revenue per i prossimi 12 mesi</p>
+          </div>
+        </div>
+
+        <!-- KPI Ricorrente -->
+        <div class="kpi-grid" style="margin-bottom: var(--spacing-lg);">
+          <div class="kpi-card" style="flex: 2;">
+            <div class="kpi-header">
+              <span class="kpi-title">Revenue Ricorrente Annua</span>
+              <div class="kpi-icon green"><i class="bi bi-arrow-repeat"></i></div>
+            </div>
+            <div class="kpi-value" id="cf-annua">-</div>
+          </div>
+          <div class="kpi-card" style="flex: 2;">
+            <div class="kpi-header">
+              <span class="kpi-title">Revenue Ricorrente Mensile</span>
+              <div class="kpi-icon blue"><i class="bi bi-calendar-month"></i></div>
+            </div>
+            <div class="kpi-value" id="cf-mensile">-</div>
+          </div>
+        </div>
+
+        <!-- Tabella 12 mesi -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Previsioni Prossimi 12 Mesi</h3>
+            <div style="font-size: 12px; color: var(--text-tertiary);">
+              <span style="color: var(--success);">Certa</span> = da clienti acquisiti |
+              <span style="color: var(--warning);">Probabile</span> = pipeline &gt;70% |
+              <span style="color: var(--text-secondary);">Potenziale</span> = pipeline &lt;70%
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Mese</th>
+                    <th style="color: var(--success);">Certa</th>
+                    <th style="color: var(--warning);">Probabile</th>
+                    <th>Potenziale</th>
+                    <th><strong>Totale</strong></th>
+                  </tr>
+                </thead>
+                <tbody id="cashflow-table">
+                  <tr><td colspan="5" class="text-center">Caricamento...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="/js/app.js"></script>

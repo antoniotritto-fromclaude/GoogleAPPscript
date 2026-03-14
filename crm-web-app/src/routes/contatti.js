@@ -10,7 +10,7 @@ const { db, saveDatabase } = require('../models/database');
 // GET /api/contatti - Lista tutti i contatti
 router.get('/', (req, res) => {
   try {
-    const { tier, categoria, is_cliente, search, stato_sviluppo, fonte_acquisizione, limit = 100, offset = 0 } = req.query;
+    const { tier, categoria, is_cliente, search, stato_sviluppo, fonte_acquisizione, cluster_cliente, funnel_status, tipo_cliente, stadio_pipeline, limit = 100, offset = 0 } = req.query;
 
     let query = `SELECT * FROM contatti WHERE 1=1`;
     const params = [];
@@ -34,6 +34,22 @@ router.get('/', (req, res) => {
     if (fonte_acquisizione) {
       query += ` AND (fonte_acquisizione = ? OR fonte = ?)`;
       params.push(fonte_acquisizione, fonte_acquisizione);
+    }
+    if (cluster_cliente) {
+      query += ` AND cluster_cliente = ?`;
+      params.push(cluster_cliente);
+    }
+    if (funnel_status) {
+      query += ` AND funnel_status = ?`;
+      params.push(funnel_status);
+    }
+    if (tipo_cliente) {
+      query += ` AND tipo_cliente = ?`;
+      params.push(tipo_cliente);
+    }
+    if (stadio_pipeline) {
+      query += ` AND stadio_pipeline = ?`;
+      params.push(stadio_pipeline);
     }
     if (search) {
       query += ` AND (nome LIKE ? OR cognome LIKE ? OR azienda LIKE ? OR email LIKE ?)`;
@@ -94,7 +110,11 @@ router.post('/', (req, res) => {
     const {
       nome, cognome, azienda, ruolo, email, telefono, cellulare,
       linkedin, categoria, tier, fonte, fonte_acquisizione, stato_sviluppo,
-      engagement_score, aum_potenziale, note
+      engagement_score, aum_potenziale, note,
+      // Nuovi campi dal foglio Excel
+      tipo_cliente, cluster_cliente, stadio_pipeline, probabilita,
+      somma_potenziale, somma_versata, data_versamento, stato_contabilita,
+      ultimo_contatto_tipo, prossima_azione, tipo_fee, funnel_status
     } = req.body;
 
     if (!nome) {
@@ -105,13 +125,23 @@ router.post('/', (req, res) => {
     const fonteFinale = fonte_acquisizione || fonte || null;
     const statoFinale = stato_sviluppo || 'Nuovo';
 
+    // Calcola management fee e iunp_36 se somma_versata presente
+    const sommaVersata = parseFloat(somma_versata) || 0;
+    const tipoFeeVal = tipo_fee || 'Fondo';
+    const managementFee = tipoFeeVal !== 'Fee Only' && sommaVersata > 0 ? sommaVersata * 0.0045 : 0;
+    const iunp36 = tipoFeeVal !== 'Fee Only' && sommaVersata > 0 ? sommaVersata * 0.0018 : 0;
+
     const result = db.prepare(`
       INSERT INTO contatti (
         nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin,
         categoria, tier, fonte, fonte_acquisizione, stato_sviluppo,
-        engagement_score, aum_potenziale, note, data_primo_contatto
+        engagement_score, aum_potenziale, note, data_primo_contatto,
+        tipo_cliente, cluster_cliente, stadio_pipeline, probabilita,
+        somma_potenziale, somma_versata, data_versamento, stato_contabilita,
+        ultimo_contatto_tipo, prossima_azione, tipo_fee, management_fee, iunp_36, funnel_status
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, date('now'),
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       nome || null,
       cognome || null,
@@ -127,8 +157,22 @@ router.post('/', (req, res) => {
       fonteFinale,
       statoFinale,
       engagement_score || 5,
-      aum_potenziale || 0,
-      note || null
+      aum_potenziale || somma_potenziale || 0,
+      note || null,
+      tipo_cliente || 'Potenziale',
+      cluster_cliente || null,
+      stadio_pipeline || 'Prospect',
+      probabilita || 10,
+      somma_potenziale || aum_potenziale || 0,
+      sommaVersata,
+      data_versamento || null,
+      stato_contabilita || null,
+      ultimo_contatto_tipo || null,
+      prossima_azione || null,
+      tipoFeeVal,
+      managementFee,
+      iunp36,
+      funnel_status || 'Non avviato'
     );
 
     saveDatabase();
@@ -234,8 +278,22 @@ router.put('/:id', (req, res) => {
     const {
       nome, cognome, azienda, ruolo, email, telefono, cellulare,
       linkedin, categoria, tier, fonte, fonte_acquisizione, stato_sviluppo,
-      engagement_score, aum_potenziale, is_cliente, note
+      engagement_score, aum_potenziale, is_cliente, note,
+      // Nuovi campi dal foglio Excel
+      tipo_cliente, cluster_cliente, stadio_pipeline, probabilita,
+      somma_potenziale, somma_versata, data_versamento, stato_contabilita,
+      ultimo_contatto_tipo, prossima_azione, tipo_fee, funnel_status
     } = req.body;
+
+    // Ricalcola management fee e iunp_36 se somma_versata cambia
+    let managementFee = contatto.management_fee;
+    let iunp36 = contatto.iunp_36;
+    if (somma_versata !== undefined) {
+      const sommaVersataVal = parseFloat(somma_versata) || 0;
+      const tipoFeeVal = tipo_fee || contatto.tipo_fee || 'Fondo';
+      managementFee = tipoFeeVal !== 'Fee Only' && sommaVersataVal > 0 ? sommaVersataVal * 0.0045 : 0;
+      iunp36 = tipoFeeVal !== 'Fee Only' && sommaVersataVal > 0 ? sommaVersataVal * 0.0018 : 0;
+    }
 
     db.prepare(`
       UPDATE contatti SET
@@ -256,10 +314,33 @@ router.put('/:id', (req, res) => {
         aum_potenziale = COALESCE(?, aum_potenziale),
         is_cliente = COALESCE(?, is_cliente),
         note = COALESCE(?, note),
+        tipo_cliente = COALESCE(?, tipo_cliente),
+        cluster_cliente = COALESCE(?, cluster_cliente),
+        stadio_pipeline = COALESCE(?, stadio_pipeline),
+        probabilita = COALESCE(?, probabilita),
+        somma_potenziale = COALESCE(?, somma_potenziale),
+        somma_versata = COALESCE(?, somma_versata),
+        data_versamento = COALESCE(?, data_versamento),
+        stato_contabilita = COALESCE(?, stato_contabilita),
+        ultimo_contatto_tipo = COALESCE(?, ultimo_contatto_tipo),
+        prossima_azione = COALESCE(?, prossima_azione),
+        tipo_fee = COALESCE(?, tipo_fee),
+        management_fee = ?,
+        iunp_36 = ?,
+        funnel_status = COALESCE(?, funnel_status),
         data_ultimo_contatto = date('now'),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin, categoria, tier, fonte, fonte_acquisizione, stato_sviluppo, engagement_score, aum_potenziale, is_cliente, note, req.params.id);
+    `).run(
+      nome, cognome, azienda, ruolo, email, telefono, cellulare, linkedin,
+      categoria, tier, fonte, fonte_acquisizione, stato_sviluppo,
+      engagement_score, aum_potenziale, is_cliente, note,
+      tipo_cliente, cluster_cliente, stadio_pipeline, probabilita,
+      somma_potenziale, somma_versata, data_versamento, stato_contabilita,
+      ultimo_contatto_tipo, prossima_azione, tipo_fee,
+      managementFee, iunp36, funnel_status,
+      req.params.id
+    );
 
     saveDatabase();
     const updated = db.prepare('SELECT * FROM contatti WHERE id = ?').get(req.params.id);

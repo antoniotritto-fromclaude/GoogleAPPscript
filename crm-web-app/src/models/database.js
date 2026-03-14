@@ -161,7 +161,7 @@ const initializeDatabase = async () => {
     )
   `);
 
-  // Tabella Contatti
+  // Tabella Contatti (allineata al foglio Excel PIPELINE)
   db.exec(`
     CREATE TABLE IF NOT EXISTS contatti (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,6 +184,22 @@ const initializeDatabase = async () => {
       note TEXT,
       data_primo_contatto DATE,
       data_ultimo_contatto DATE,
+      -- Nuovi campi dal foglio Excel PIPELINE
+      tipo_cliente TEXT DEFAULT 'Potenziale',
+      cluster_cliente TEXT,
+      stadio_pipeline TEXT DEFAULT 'Prospect',
+      probabilita INTEGER DEFAULT 10,
+      somma_potenziale REAL DEFAULT 0,
+      somma_versata REAL DEFAULT 0,
+      data_versamento DATE,
+      stato_contabilita TEXT,
+      ultimo_contatto_tipo TEXT,
+      prossima_azione TEXT,
+      tipo_fee TEXT DEFAULT 'Fondo',
+      management_fee REAL DEFAULT 0,
+      iunp_36 REAL DEFAULT 0,
+      funnel_status TEXT DEFAULT 'Non avviato',
+      data_ultimo_invio_funnel DATE,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
@@ -206,6 +222,22 @@ const initializeDatabase = async () => {
 
   addColumnIfNotExists('contatti', 'fonte_acquisizione', 'TEXT');
   addColumnIfNotExists('contatti', 'stato_sviluppo', "TEXT DEFAULT 'Nuovo'");
+  // Nuovi campi dal foglio Excel PIPELINE
+  addColumnIfNotExists('contatti', 'tipo_cliente', "TEXT DEFAULT 'Potenziale'");
+  addColumnIfNotExists('contatti', 'cluster_cliente', 'TEXT');
+  addColumnIfNotExists('contatti', 'stadio_pipeline', "TEXT DEFAULT 'Prospect'");
+  addColumnIfNotExists('contatti', 'probabilita', 'INTEGER DEFAULT 10');
+  addColumnIfNotExists('contatti', 'somma_potenziale', 'REAL DEFAULT 0');
+  addColumnIfNotExists('contatti', 'somma_versata', 'REAL DEFAULT 0');
+  addColumnIfNotExists('contatti', 'data_versamento', 'DATE');
+  addColumnIfNotExists('contatti', 'stato_contabilita', 'TEXT');
+  addColumnIfNotExists('contatti', 'ultimo_contatto_tipo', 'TEXT');
+  addColumnIfNotExists('contatti', 'prossima_azione', 'TEXT');
+  addColumnIfNotExists('contatti', 'tipo_fee', "TEXT DEFAULT 'Fondo'");
+  addColumnIfNotExists('contatti', 'management_fee', 'REAL DEFAULT 0');
+  addColumnIfNotExists('contatti', 'iunp_36', 'REAL DEFAULT 0');
+  addColumnIfNotExists('contatti', 'funnel_status', "TEXT DEFAULT 'Non avviato'");
+  addColumnIfNotExists('contatti', 'data_ultimo_invio_funnel', 'DATE');
 
   // Tabella Pipeline
   db.exec(`
@@ -379,6 +411,67 @@ const initializeDatabase = async () => {
       fee_settimanale REAL DEFAULT 0,
       cac REAL DEFAULT 0,
       roi REAL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Tabella Template Email Funnel (dal foglio Excel)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS email_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cluster TEXT NOT NULL,
+      step INTEGER NOT NULL,
+      giorni_attesa INTEGER DEFAULT 0,
+      oggetto TEXT NOT NULL,
+      corpo TEXT NOT NULL,
+      link_cta TEXT,
+      attivo INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Tabella Log Invii Email (dal foglio Excel)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS log_invii (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      data_invio DATETIME DEFAULT CURRENT_TIMESTAMP,
+      contatto_id INTEGER,
+      contatto_nome TEXT,
+      cluster TEXT,
+      step INTEGER,
+      oggetto TEXT,
+      email_destinatario TEXT,
+      esito TEXT DEFAULT 'OK',
+      errore TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (contatto_id) REFERENCES contatti(id)
+    )
+  `);
+
+  // Tabella Previsioni Cash Flow
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS previsioni_cashflow (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mese TEXT NOT NULL,
+      anno INTEGER NOT NULL,
+      revenue_certa REAL DEFAULT 0,
+      revenue_probabile REAL DEFAULT 0,
+      revenue_potenziale REAL DEFAULT 0,
+      note TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Tabella Configurazione Target
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS target_revenue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      anno INTEGER NOT NULL,
+      target_aum REAL DEFAULT 15000000,
+      target_revenue REAL DEFAULT 0,
+      management_fee_rate REAL DEFAULT 0.45,
+      iunp_rate REAL DEFAULT 18,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);

@@ -85,7 +85,12 @@ function navigateTo(page) {
     aum: { title: 'AUM Tracking', subtitle: 'Gestione patrimonio' },
     analytics: { title: 'Analytics', subtitle: 'Analisi e statistiche' },
     report: { title: 'Report', subtitle: 'Report e export dati' },
-    gestione: { title: 'Gestione Database', subtitle: 'Import, export e gestione dati' }
+    gestione: { title: 'Gestione Database', subtitle: 'Import, export e gestione dati' },
+    email: { title: 'Email Marketing', subtitle: 'Configura e invia email' },
+    funnel: { title: 'Funnel Email', subtitle: 'Sistema email automatico per cluster' },
+    revenue: { title: 'Dashboard Revenue', subtitle: 'KPI e analisi revenue' },
+    conversione: { title: 'Analisi Conversione', subtitle: 'Funnel e performance di conversione' },
+    cashflow: { title: 'Cash Flow', subtitle: 'Previsioni revenue 12 mesi' }
   };
 
   document.getElementById('page-title').textContent = titles[page]?.title || page;
@@ -125,6 +130,18 @@ async function loadPageData(page) {
       break;
     case 'email':
       await loadEmail();
+      break;
+    case 'funnel':
+      await loadFunnel();
+      break;
+    case 'revenue':
+      await loadRevenueData();
+      break;
+    case 'conversione':
+      await loadConversione();
+      break;
+    case 'cashflow':
+      await loadCashflow();
       break;
   }
 }
@@ -174,14 +191,14 @@ function renderFunnel(stages) {
   const container = document.getElementById('funnel-container');
   const maxValue = Math.max(...stages.map(s => s.valore), 1);
 
+  // Colori per stadi allineati al foglio Excel
   const colors = {
-    'Lead': '#1da1f2',
-    'Contatto': '#0d8ed9',
-    'Qualificato': '#17bf63',
-    'Proposta Inviata': '#ffad1f',
-    'Negoziazione': '#ff6b00',
-    'Contratto Inviato': '#794bc4',
-    'Contratto Firmato': '#5c3d99',
+    'Prospect': '#1da1f2',
+    'Lead': '#0d8ed9',
+    'Primo Contatto': '#17bf63',
+    'Appuntamento': '#ffad1f',
+    'Secondo Appuntamento': '#ff6b00',
+    'Chiusura': '#794bc4',
     'Cliente Attivo': '#00a651'
   };
 
@@ -2684,6 +2701,262 @@ async function loadUserInfo() {
     }
   } catch (error) {
     console.log('User info not available');
+  }
+}
+
+// ========== FUNNEL EMAIL AUTOMATICO ==========
+
+async function loadFunnel() {
+  try {
+    // Carica statistiche
+    const stats = await fetchAPI('/funnel/stats');
+
+    const nonAvviato = stats.perStatus?.find(s => s.funnel_status === 'Non avviato')?.count || 0;
+    const step1 = stats.perStatus?.find(s => s.funnel_status === 'Step 1 inviato')?.count || 0;
+    const risposte = stats.perStatus?.find(s => s.funnel_status === 'Risposto')?.count || 0;
+
+    document.getElementById('funnel-ready').textContent = nonAvviato + step1;
+    document.getElementById('funnel-oggi').textContent = stats.inviiOggi || 0;
+    document.getElementById('funnel-settimana').textContent = stats.inviiSettimana || 0;
+    document.getElementById('funnel-risposte').textContent = risposte;
+
+    // Badge
+    const badge = document.getElementById('badge-funnel');
+    if (badge) badge.textContent = nonAvviato;
+
+    // Carica lead pronti
+    loadFunnelLeads();
+
+    // Carica template primo cluster
+    showClusterTemplates('Imprenditore', document.querySelector('.tabs .tab.active'));
+  } catch (error) {
+    console.error('Errore caricamento funnel:', error);
+  }
+}
+
+async function loadFunnelLeads() {
+  try {
+    const leads = await fetchAPI('/funnel/leads-ready');
+    const tbody = document.getElementById('funnel-leads-table');
+
+    if (!leads || leads.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center">Nessun lead pronto per invio</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = leads.slice(0, 20).map(lead => {
+      const nome = `${lead.nome} ${lead.cognome || ''}`.trim();
+      const cluster = lead.cluster_effettivo || lead.cluster_cliente || 'N/D';
+      const ultimoInvio = lead.data_ultimo_invio_funnel ? formatDate(lead.data_ultimo_invio_funnel) : 'Mai';
+
+      return `
+        <tr>
+          <td>${nome}</td>
+          <td>${lead.email || '-'}</td>
+          <td><span class="status-badge info">${cluster}</span></td>
+          <td>Step ${lead.prossimo_step}</td>
+          <td>${ultimoInvio}</td>
+          <td>
+            <button class="btn btn-sm btn-primary" onclick="sendFunnelEmail(${lead.id})" ${!lead.email ? 'disabled' : ''}>
+              <i class="bi bi-send"></i> Invia
+            </button>
+            <button class="btn btn-sm btn-secondary" onclick="markFunnelResponded(${lead.id})">
+              <i class="bi bi-check"></i> Risposto
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('Errore caricamento leads:', error);
+  }
+}
+
+async function sendFunnelEmail(contattoId) {
+  if (!confirm('Inviare email funnel a questo contatto?')) return;
+
+  try {
+    const result = await fetchAPI(`/funnel/send/${contattoId}`, { method: 'POST' });
+    if (result.success) {
+      alert(result.message + (result.nota ? '\n\n' + result.nota : ''));
+      loadFunnelLeads();
+    }
+  } catch (error) {
+    alert('Errore: ' + error.message);
+  }
+}
+
+async function markFunnelResponded(contattoId) {
+  try {
+    await fetchAPI(`/funnel/mark-responded/${contattoId}`, { method: 'POST' });
+    loadFunnelLeads();
+  } catch (error) {
+    alert('Errore: ' + error.message);
+  }
+}
+
+async function initFunnelTemplates() {
+  try {
+    const result = await fetchAPI('/funnel/init-templates', { method: 'POST' });
+    alert(result.message);
+  } catch (error) {
+    alert('Errore: ' + error.message);
+  }
+}
+
+async function showClusterTemplates(cluster, tabEl) {
+  // Aggiorna tabs
+  document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+  if (tabEl) tabEl.classList.add('active');
+
+  try {
+    const templates = await fetchAPI(`/funnel/templates/${cluster}`);
+    const container = document.getElementById('cluster-templates-container');
+
+    if (!templates || templates.length === 0) {
+      container.innerHTML = '<p class="text-muted">Nessun template per questo cluster</p>';
+      return;
+    }
+
+    container.innerHTML = templates.map(t => `
+      <div class="card" style="margin-bottom: var(--spacing-md); padding: var(--spacing-md);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-sm);">
+          <strong>Step ${t.step}</strong>
+          <span class="text-muted">Attesa: ${t.giorni_attesa || 0} giorni</span>
+        </div>
+        <div style="margin-bottom: var(--spacing-sm);">
+          <strong>Oggetto:</strong> ${t.oggetto}
+        </div>
+        <div style="font-size: 13px; color: var(--text-secondary); white-space: pre-wrap; max-height: 100px; overflow-y: auto;">
+          ${t.corpo?.substring(0, 300)}...
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('Errore caricamento templates:', error);
+  }
+}
+
+// ========== DASHBOARD REVENUE ==========
+
+async function loadRevenueData() {
+  try {
+    const data = await fetchAPI('/dashboard/revenue');
+
+    // KPI
+    document.getElementById('rev-clienti').textContent = data.kpi.clienti;
+    document.getElementById('rev-pipeline').textContent = data.kpi.pipeline;
+    document.getElementById('rev-aum-gestito').textContent = formatCurrency(data.kpi.aumGestito);
+    document.getElementById('rev-aum-pipeline').textContent = formatCurrency(data.kpi.aumPipeline);
+    document.getElementById('rev-clienti-val').textContent = formatCurrency(data.kpi.revClienti);
+    document.getElementById('rev-pipeline-val').textContent = formatCurrency(data.kpi.revPipeline);
+    document.getElementById('rev-totale').textContent = formatCurrency(data.kpi.revTotale);
+    document.getElementById('rev-target').textContent = data.kpi.percentualeTarget.toFixed(1) + '%';
+
+    // Fee details
+    document.getElementById('rev-mgmt-fee').textContent = formatCurrency(data.dettaglioFee.managementFeeTotale);
+    document.getElementById('rev-iunp').textContent = formatCurrency(data.dettaglioFee.iunpTotale);
+
+    // Breakdown per cluster
+    const clusterTable = document.getElementById('rev-cluster-table');
+    if (data.breakdownPerCluster && data.breakdownPerCluster.length > 0) {
+      clusterTable.innerHTML = data.breakdownPerCluster.map(c => `
+        <tr>
+          <td>${c.cluster}</td>
+          <td>${c.clienti}</td>
+          <td>${c.potenziali}</td>
+          <td>${formatCurrency(c.aum_gestito)}</td>
+        </tr>
+      `).join('');
+    } else {
+      clusterTable.innerHTML = '<tr><td colspan="4" class="text-center">Nessun dato</td></tr>';
+    }
+  } catch (error) {
+    console.error('Errore caricamento revenue:', error);
+  }
+}
+
+// ========== ANALISI CONVERSIONE ==========
+
+async function loadConversione() {
+  try {
+    const data = await fetchAPI('/dashboard/conversione');
+
+    // Funnel di conversione
+    const funnelContainer = document.getElementById('funnel-conversion-container');
+
+    const barre = data.funnelPerStadio.map(s => {
+      const width = Math.max(s.percentualeTotale, 5);
+      return `
+        <div style="margin-bottom: var(--spacing-md);">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>${s.stadio}</span>
+            <span>${s.count} lead (${s.percentualeTotale.toFixed(1)}%)</span>
+          </div>
+          <div style="background: var(--bg-tertiary); border-radius: 4px; height: 24px; position: relative;">
+            <div style="background: linear-gradient(90deg, var(--primary), var(--primary-hover)); width: ${width}%; height: 100%; border-radius: 4px; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;">
+              <span style="color: white; font-size: 11px; font-weight: 600;">${s.conversioneStadio.toFixed(0)}%</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    funnelContainer.innerHTML = barre + `
+      <div style="margin-top: var(--spacing-lg); padding: var(--spacing-md); background: var(--success); color: white; border-radius: 8px; text-align: center;">
+        <strong>Clienti Acquisiti: ${data.clientiAcquisiti}</strong>
+        <span style="margin-left: var(--spacing-md);">Tasso conversione globale: ${data.tassoConversioneGlobale}%</span>
+      </div>
+    `;
+
+    // Conversione per fonte
+    const fonteTable = document.getElementById('conv-fonte-table');
+    if (data.conversionePerFonte && data.conversionePerFonte.length > 0) {
+      fonteTable.innerHTML = data.conversionePerFonte.map(f => `
+        <tr>
+          <td>${f.fonte}</td>
+          <td>${f.totali}</td>
+          <td>${f.chiusi}</td>
+          <td><strong>${f.tassoConversione.toFixed(1)}%</strong></td>
+          <td>${formatCurrency(f.aum_chiusi)}</td>
+        </tr>
+      `).join('');
+    } else {
+      fonteTable.innerHTML = '<tr><td colspan="5" class="text-center">Nessun dato</td></tr>';
+    }
+  } catch (error) {
+    console.error('Errore caricamento conversione:', error);
+  }
+}
+
+// ========== PREVISIONI CASH FLOW ==========
+
+async function loadCashflow() {
+  try {
+    const data = await fetchAPI('/dashboard/cashflow');
+
+    // KPI ricorrenti
+    document.getElementById('cf-annua').textContent = formatCurrency(data.revenueRicorrenteAnnua);
+    document.getElementById('cf-mensile').textContent = formatCurrency(data.revenueRicorrenteMensile);
+
+    // Tabella 12 mesi
+    const tbody = document.getElementById('cashflow-table');
+
+    if (data.previsioni && data.previsioni.length > 0) {
+      tbody.innerHTML = data.previsioni.map(m => `
+        <tr>
+          <td>${m.nomeMese}</td>
+          <td style="color: var(--success);">${formatCurrency(m.revenueCerta)}</td>
+          <td style="color: var(--warning);">${formatCurrency(m.revenueProbabile)}</td>
+          <td>${formatCurrency(m.revenuePotenziale)}</td>
+          <td><strong>${formatCurrency(m.totale)}</strong></td>
+        </tr>
+      `).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center">Nessuna previsione disponibile</td></tr>';
+    }
+  } catch (error) {
+    console.error('Errore caricamento cashflow:', error);
   }
 }
 

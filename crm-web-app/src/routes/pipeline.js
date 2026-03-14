@@ -29,17 +29,17 @@ router.get('/', (req, res) => {
       params.push(responsabile);
     }
 
+    // Stadi allineati al foglio Excel: Prospect, Lead, Primo Contatto, Appuntamento, Secondo Appuntamento, Chiusura
     query += ` ORDER BY
       CASE p.stage
-        WHEN 'Lead' THEN 1
-        WHEN 'Contatto' THEN 2
-        WHEN 'Qualificato' THEN 3
-        WHEN 'Proposta Inviata' THEN 4
-        WHEN 'Negoziazione' THEN 5
-        WHEN 'Contratto Inviato' THEN 6
-        WHEN 'Contratto Firmato' THEN 7
-        WHEN 'Cliente Attivo' THEN 8
-        WHEN 'Chiuso Perso' THEN 9
+        WHEN 'Prospect' THEN 1
+        WHEN 'Lead' THEN 2
+        WHEN 'Primo Contatto' THEN 3
+        WHEN 'Appuntamento' THEN 4
+        WHEN 'Secondo Appuntamento' THEN 5
+        WHEN 'Chiusura' THEN 6
+        WHEN 'Cliente Attivo' THEN 7
+        WHEN 'Chiuso Perso' THEN 8
       END,
       p.aum_previsto DESC
       LIMIT ? OFFSET ?`;
@@ -66,14 +66,13 @@ router.get('/funnel', (req, res) => {
       GROUP BY stage
       ORDER BY
         CASE stage
-          WHEN 'Lead' THEN 1
-          WHEN 'Contatto' THEN 2
-          WHEN 'Qualificato' THEN 3
-          WHEN 'Proposta Inviata' THEN 4
-          WHEN 'Negoziazione' THEN 5
-          WHEN 'Contratto Inviato' THEN 6
-          WHEN 'Contratto Firmato' THEN 7
-          WHEN 'Cliente Attivo' THEN 8
+          WHEN 'Prospect' THEN 1
+          WHEN 'Lead' THEN 2
+          WHEN 'Primo Contatto' THEN 3
+          WHEN 'Appuntamento' THEN 4
+          WHEN 'Secondo Appuntamento' THEN 5
+          WHEN 'Chiusura' THEN 6
+          WHEN 'Cliente Attivo' THEN 7
         END
     `).all();
 
@@ -104,9 +103,10 @@ router.post('/', (req, res) => {
     const newNum = (lastId.max || 0) + 1;
     const pipeline_id = `P-${String(newNum).padStart(4, '0')}`;
 
+    // Probabilità allineate al foglio Excel
     const probabilitaMap = {
-      'Lead': 10, 'Contatto': 20, 'Qualificato': 40, 'Proposta Inviata': 60,
-      'Negoziazione': 75, 'Contratto Inviato': 85, 'Contratto Firmato': 95, 'Cliente Attivo': 100
+      'Prospect': 10, 'Lead': 20, 'Primo Contatto': 40, 'Appuntamento': 60,
+      'Secondo Appuntamento': 75, 'Chiusura': 90, 'Cliente Attivo': 100
     };
     const probabilita = probabilitaMap[stage] || 10;
     const feePerc = fee_percentuale || 0.5;
@@ -227,9 +227,10 @@ router.put('/:id', (req, res) => {
 
     const stageChanged = stage && stage !== deal.stage;
 
+    // Probabilità allineate al foglio Excel
     const probabilitaMap = {
-      'Lead': 10, 'Contatto': 20, 'Qualificato': 40, 'Proposta Inviata': 60,
-      'Negoziazione': 75, 'Contratto Inviato': 85, 'Contratto Firmato': 95, 'Cliente Attivo': 100, 'Chiuso Perso': 0
+      'Prospect': 10, 'Lead': 20, 'Primo Contatto': 40, 'Appuntamento': 60,
+      'Secondo Appuntamento': 75, 'Chiusura': 90, 'Cliente Attivo': 100, 'Chiuso Perso': 0
     };
     const probabilita = stage ? probabilitaMap[stage] : deal.probabilita;
     const aum = aum_previsto !== undefined ? aum_previsto : deal.aum_previsto;
@@ -283,7 +284,8 @@ router.post('/:id/avanza', (req, res) => {
       return res.status(404).json({ error: 'Deal non trovato' });
     }
 
-    const stages = ['Lead', 'Contatto', 'Qualificato', 'Proposta Inviata', 'Negoziazione', 'Contratto Inviato', 'Contratto Firmato', 'Cliente Attivo'];
+    // Stadi allineati al foglio Excel
+    const stages = ['Prospect', 'Lead', 'Primo Contatto', 'Appuntamento', 'Secondo Appuntamento', 'Chiusura', 'Cliente Attivo'];
     const currentIndex = stages.indexOf(deal.stage);
 
     if (currentIndex === -1 || currentIndex >= stages.length - 1) {

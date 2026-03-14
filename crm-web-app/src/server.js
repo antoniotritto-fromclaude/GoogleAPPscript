@@ -88,6 +88,7 @@ async function startServer() {
     const adminRoutes = require('./routes/admin');
     const interazioniRoutes = require('./routes/interazioni');
     const emailRoutes = require('./routes/email');
+    const funnelRoutes = require('./routes/funnel');
 
     // API Routes
     app.use('/api/dashboard', dashboardRoutes);
@@ -100,6 +101,7 @@ async function startServer() {
     app.use('/api/admin', adminRoutes);
     app.use('/api/interazioni', interazioniRoutes);
     app.use('/api/email', emailRoutes);
+    app.use('/api/funnel', funnelRoutes);
 
     // Serve main page
     app.get('/', (req, res) => {
