@@ -2,7 +2,8 @@
 node_modules/
 
 # Database (locale)
-# data/*.db
+data/*.db
+*.db
 
 # Environment
 .env
