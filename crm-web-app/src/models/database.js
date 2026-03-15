@@ -245,6 +245,72 @@ const initializeDatabase = async () => {
   addColumnIfNotExists('contatti', 'funnel_status', "TEXT DEFAULT 'Non avviato'");
   addColumnIfNotExists('contatti', 'data_ultimo_invio_funnel', 'DATE');
 
+  // Tabella Pipeline - verifica e rimuovi CHECK constraint se presente
+  const fixPipelineCheckConstraint = () => {
+    try {
+      // Controlla se la tabella ha CHECK constraint sullo stage
+      const tableInfo = database.exec("SELECT sql FROM sqlite_master WHERE type='table' AND name='pipeline'");
+      if (tableInfo.length > 0 && tableInfo[0].values.length > 0) {
+        const createSql = tableInfo[0].values[0][0];
+        if (createSql && createSql.includes('CHECK')) {
+          console.log('🔧 Rimozione CHECK constraint dalla tabella pipeline...');
+
+          // Salva i dati esistenti
+          const data = database.exec('SELECT * FROM pipeline');
+          const hasData = data.length > 0 && data[0].values.length > 0;
+
+          // Rinomina la tabella vecchia
+          database.run('ALTER TABLE pipeline RENAME TO pipeline_old');
+
+          // Crea la nuova tabella senza CHECK
+          database.run(`
+            CREATE TABLE pipeline (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              pipeline_id TEXT UNIQUE,
+              contatto_id INTEGER,
+              nome_deal TEXT NOT NULL,
+              stage TEXT DEFAULT 'Lead',
+              aum_previsto REAL DEFAULT 0,
+              probabilita INTEGER DEFAULT 10,
+              fee_percentuale REAL DEFAULT 0.5,
+              fee_stimata REAL DEFAULT 0,
+              fonte TEXT,
+              data_creazione DATE DEFAULT CURRENT_DATE,
+              data_ultimo_avanzamento DATE DEFAULT CURRENT_DATE,
+              giorni_in_stage INTEGER DEFAULT 0,
+              motivo_perdita TEXT,
+              note TEXT,
+              responsabile TEXT DEFAULT 'Antonio Tritto',
+              prossima_azione TEXT,
+              data_prossima_azione DATE,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+          `);
+
+          // Copia i dati
+          if (hasData) {
+            database.run('INSERT INTO pipeline SELECT * FROM pipeline_old');
+          }
+
+          // Elimina la tabella vecchia
+          database.run('DROP TABLE pipeline_old');
+
+          saveDatabase();
+          console.log('✅ CHECK constraint rimosso dalla tabella pipeline');
+        }
+      }
+    } catch (e) {
+      console.log('Nota fix pipeline:', e.message);
+    }
+  };
+
+  // Esegui fix se la tabella esiste già
+  const pipelineExists = database.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='pipeline'");
+  if (pipelineExists.length > 0 && pipelineExists[0].values.length > 0) {
+    fixPipelineCheckConstraint();
+  }
+
   // Tabella Pipeline
   db.exec(`
     CREATE TABLE IF NOT EXISTS pipeline (
