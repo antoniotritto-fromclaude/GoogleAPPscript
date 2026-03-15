@@ -20,12 +20,20 @@ const SCOPES = [
 
 // Funzione per ottenere l'URL base dalla richiesta
 function getBaseUrl(req) {
-  // Usa BASE_URL se configurato, altrimenti rileva dalla richiesta
+  // Usa BASE_URL se configurato
   if (process.env.BASE_URL) {
     return process.env.BASE_URL;
   }
-  const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
+
+  // Rileva automaticamente per Render e altri servizi cloud
   const host = req.get('x-forwarded-host') || req.get('host');
+
+  // Su Render, Heroku, e altri servizi cloud, usa sempre HTTPS
+  if (host && (host.includes('.onrender.com') || host.includes('.herokuapp.com') || host.includes('.vercel.app'))) {
+    return `https://${host}`;
+  }
+
+  const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
   return `${protocol}://${host}`;
 }
 
