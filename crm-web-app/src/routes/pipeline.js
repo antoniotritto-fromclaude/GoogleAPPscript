@@ -215,16 +215,15 @@ router.get('/:id', (req, res) => {
 // PUT /api/pipeline/:id - Aggiorna deal
 router.put('/:id', (req, res) => {
   try {
-    const deal = db.prepare('SELECT * FROM pipeline WHERE id = ?').get(req.params.id);
+    const dealId = parseInt(req.params.id);
+    console.log('PUT /api/pipeline/' + dealId + ' - body:', JSON.stringify(req.body));
+
+    const deal = db.prepare('SELECT * FROM pipeline WHERE id = ?').get(dealId);
     if (!deal) {
       return res.status(404).json({ error: 'Deal non trovato' });
     }
 
-    const {
-      nome_deal, stage, aum_previsto, fee_percentuale,
-      responsabile, prossima_azione, data_prossima_azione, note, motivo_perdita
-    } = req.body;
-
+    const { stage } = req.body;
     const stageChanged = stage && stage !== deal.stage;
 
     // Probabilita allineate al foglio Excel
@@ -232,48 +231,54 @@ router.put('/:id', (req, res) => {
       'Prospect': 10, 'Lead': 20, 'Primo Contatto': 40, 'Appuntamento': 60,
       'Secondo Appuntamento': 75, 'Chiusura': 90, 'Cliente Attivo': 100, 'Chiuso Perso': 0
     };
-    // Usa probabilita dalla mappa, o mantieni quella esistente se lo stage non e nella mappa
-    const probabilita = stage ? (probabilitaMap[stage] !== undefined ? probabilitaMap[stage] : deal.probabilita) : deal.probabilita;
-    const aum = aum_previsto !== undefined ? (parseFloat(aum_previsto) || 0) : (deal.aum_previsto || 0);
-    const feePerc = fee_percentuale !== undefined ? (parseFloat(fee_percentuale) || 0.5) : (deal.fee_percentuale || 0.5);
-    const fee_stimata = aum * (feePerc / 100);
 
-    db.prepare(`
-      UPDATE pipeline SET
-        nome_deal = COALESCE(?, nome_deal),
-        stage = COALESCE(?, stage),
-        aum_previsto = ?,
-        probabilita = ?,
-        fee_percentuale = ?,
-        fee_stimata = ?,
-        responsabile = COALESCE(?, responsabile),
-        prossima_azione = COALESCE(?, prossima_azione),
-        data_prossima_azione = COALESCE(?, data_prossima_azione),
-        note = COALESCE(?, note),
-        motivo_perdita = COALESCE(?, motivo_perdita),
-        data_ultimo_avanzamento = CASE WHEN ? THEN date('now') ELSE data_ultimo_avanzamento END,
-        giorni_in_stage = CASE WHEN ? THEN 0 ELSE giorni_in_stage END,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(nome_deal, stage, aum, probabilita, feePerc, fee_stimata, responsabile, prossima_azione, data_prossima_azione, note, motivo_perdita, stageChanged ? 1 : 0, stageChanged ? 1 : 0, req.params.id);
+    const newStage = stage || deal.stage;
+    const newProbabilita = probabilitaMap[newStage] !== undefined ? probabilitaMap[newStage] : deal.probabilita;
+    const newAum = deal.aum_previsto || 0;
+    const newFeePerc = deal.fee_percentuale || 0.5;
+    const newFeeStimata = newAum * (newFeePerc / 100);
 
-    if (stageChanged && deal.contatto_id) {
+    // Query semplificata senza CASE WHEN parametrizzato
+    if (stageChanged) {
       db.prepare(`
-        INSERT INTO timeline (contatto_id, pipeline_id, tipo_interazione, canale, descrizione, sentiment, stage_prima, stage_dopo, cambio_stage)
-        VALUES (?, ?, 'Nota', 'Altro', ?, 'Neutrale', ?, ?, 1)
-      `).run(deal.contatto_id, req.params.id, `Avanzamento da ${deal.stage} a ${stage}`, deal.stage, stage);
+        UPDATE pipeline SET
+          stage = ?,
+          probabilita = ?,
+          data_ultimo_avanzamento = date('now'),
+          giorni_in_stage = 0,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(newStage, newProbabilita, dealId);
 
-      if (stage === 'Cliente Attivo') {
-        db.prepare('UPDATE contatti SET is_cliente = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(deal.contatto_id);
+      // Inserisci nella timeline solo se c'e un contatto associato
+      if (deal.contatto_id) {
+        try {
+          db.prepare(`
+            INSERT INTO timeline (contatto_id, pipeline_id, tipo_interazione, canale, descrizione, sentiment, stage_prima, stage_dopo, cambio_stage)
+            VALUES (?, ?, 'Nota', 'Altro', ?, 'Neutrale', ?, ?, 1)
+          `).run(deal.contatto_id, dealId, 'Avanzamento da ' + deal.stage + ' a ' + newStage, deal.stage, newStage);
+
+          if (newStage === 'Cliente Attivo') {
+            db.prepare('UPDATE contatti SET is_cliente = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(deal.contatto_id);
+          }
+        } catch (timelineErr) {
+          console.log('Timeline insert skipped:', timelineErr.message);
+        }
       }
+    } else {
+      // Solo aggiorna updated_at se non c'e cambio stage
+      db.prepare(`
+        UPDATE pipeline SET updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `).run(dealId);
     }
 
     saveDatabase();
-    const updated = db.prepare('SELECT * FROM pipeline WHERE id = ?').get(req.params.id);
+    const updated = db.prepare('SELECT * FROM pipeline WHERE id = ?').get(dealId);
+    console.log('Deal aggiornato:', updated.id, updated.stage);
     res.json(updated);
   } catch (error) {
-    console.error('Errore aggiornamento deal:', error);
-    res.status(500).json({ error: 'Errore nell\'aggiornamento deal' });
+    console.error('Errore aggiornamento deal:', error.message);
+    res.status(500).json({ error: 'Errore nell\'aggiornamento deal: ' + error.message });
   }
 });
 
