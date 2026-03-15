@@ -17,19 +17,46 @@ const { db, saveDatabase } = require('../models/database');
 // OAuth2 Configuration
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
-const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/email/oauth/callback';
-
-const oauth2Client = new google.auth.OAuth2(
-  GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET,
-  REDIRECT_URI
-);
 
 // Scopes needed for sending email
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/userinfo.email'
 ];
+
+// Funzione per ottenere l'URL base dalla richiesta
+function getBaseUrl(req) {
+  if (process.env.BASE_URL) {
+    return process.env.BASE_URL;
+  }
+  if (process.env.GOOGLE_REDIRECT_URI) {
+    // Estrai base URL dal redirect URI configurato
+    const url = new URL(process.env.GOOGLE_REDIRECT_URI);
+    return `${url.protocol}//${url.host}`;
+  }
+  const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
+  const host = req.get('x-forwarded-host') || req.get('host');
+  return `${protocol}://${host}`;
+}
+
+// Funzione per creare oauth2Client con redirect URI dinamico
+function createOAuth2Client(redirectUri) {
+  return new google.auth.OAuth2(
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    redirectUri
+  );
+}
+
+// OAuth2Client per operazioni interne (usa refresh token salvato)
+function getInternalOAuth2Client() {
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/email/oauth/callback';
+  return new google.auth.OAuth2(
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    redirectUri
+  );
+}
 
 // Variabili per gestire lo stato dell'invio bulk
 let bulkEmailStatus = {
@@ -104,10 +131,18 @@ router.get('/oauth/url', (req, res) => {
     });
   }
 
+  const baseUrl = getBaseUrl(req);
+  const redirectUri = `${baseUrl}/api/email/oauth/callback`;
+  const oauth2Client = createOAuth2Client(redirectUri);
+
+  // Salva il redirect URI per il callback (tramite state parameter)
+  const state = Buffer.from(JSON.stringify({ redirectUri })).toString('base64');
+
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: SCOPES,
-    prompt: 'consent' // Forza il refresh token
+    prompt: 'consent', // Forza il refresh token
+    state
   });
 
   res.json({ url: authUrl });
@@ -115,7 +150,7 @@ router.get('/oauth/url', (req, res) => {
 
 // GET /api/email/oauth/callback - Callback OAuth Google
 router.get('/oauth/callback', async (req, res) => {
-  const { code, error } = req.query;
+  const { code, error, state } = req.query;
 
   if (error) {
     return res.send(`
@@ -136,8 +171,37 @@ router.get('/oauth/callback', async (req, res) => {
   }
 
   try {
+    // Recupera il redirect URI dallo state o usa quello della richiesta corrente
+    let redirectUri;
+    if (state) {
+      try {
+        const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
+        redirectUri = stateData.redirectUri;
+      } catch (e) {
+        console.log('State decode failed, using request-based URL');
+      }
+    }
+    if (!redirectUri) {
+      const baseUrl = getBaseUrl(req);
+      redirectUri = `${baseUrl}/api/email/oauth/callback`;
+    }
+
+    const oauth2Client = createOAuth2Client(redirectUri);
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
+
+    // Salva il redirect URI usato per future operazioni
+    const upsertConfig = (chiave, valore) => {
+      try {
+        const existing = db.prepare('SELECT id FROM configurazione WHERE chiave = ?').get(chiave);
+        if (existing) {
+          db.prepare('UPDATE configurazione SET valore = ?, updated_at = CURRENT_TIMESTAMP WHERE chiave = ?').run(valore, chiave);
+        } else {
+          db.prepare('INSERT INTO configurazione (chiave, valore) VALUES (?, ?)').run(chiave, valore);
+        }
+      } catch (e) { console.error('Errore upsert config:', e); }
+    };
+    upsertConfig('email_oauth_redirect_uri', redirectUri);
 
     // Ottieni info utente
     const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
@@ -209,10 +273,7 @@ router.get('/oauth/status', async (req, res) => {
     }
 
     // Verifica se il token è valido
-    oauth2Client.setCredentials({
-      access_token: config.access_token,
-      refresh_token: config.refresh_token
-    });
+    const oauth2Client = getConfiguredOAuth2Client();
 
     try {
       // Prova a refreshare il token
@@ -383,9 +444,7 @@ router.post('/test', async (req, res) => {
         });
       }
 
-      oauth2Client.setCredentials({
-        refresh_token: config.refresh_token
-      });
+      const oauth2Client = getConfiguredOAuth2Client();
 
       try {
         await oauth2Client.getAccessToken();
@@ -648,11 +707,28 @@ function getOAuthConfig() {
       email: config.address,
       access_token: config.oauth_access_token,
       refresh_token: config.oauth_refresh_token,
+      redirect_uri: config.oauth_redirect_uri,
       nome_mittente: config.nome_mittente || 'Antonio Tritto'
     };
   } catch (e) {
     return {};
   }
+}
+
+// Funzione helper per ottenere oauth2Client configurato
+function getConfiguredOAuth2Client() {
+  const config = getOAuthConfig();
+  const redirectUri = config.redirect_uri || process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/email/oauth/callback';
+  const oauth2Client = createOAuth2Client(redirectUri);
+
+  if (config.access_token || config.refresh_token) {
+    oauth2Client.setCredentials({
+      access_token: config.access_token,
+      refresh_token: config.refresh_token
+    });
+  }
+
+  return oauth2Client;
 }
 
 function getEmailConfig() {
@@ -700,9 +776,7 @@ async function getTransporter() {
 
 // Invia email tramite API Gmail REST (no SMTP)
 async function sendMailViaGmailAPI(config, mailOptions) {
-  oauth2Client.setCredentials({
-    refresh_token: config.refresh_token
-  });
+  const oauth2Client = getConfiguredOAuth2Client();
 
   const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 

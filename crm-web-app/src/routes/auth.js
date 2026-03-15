@@ -9,22 +9,34 @@ const { google } = require('googleapis');
 // OAuth2 Configuration
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
-const REDIRECT_URI = `${BASE_URL}/auth/google/callback`;
 
 // Email autorizzate per il login (aggiungi le tue)
 const AUTHORIZED_EMAILS = (process.env.AUTHORIZED_EMAILS || '').split(',').filter(e => e);
-
-const oauth2Client = new google.auth.OAuth2(
-  GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET,
-  REDIRECT_URI
-);
 
 const SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile'
 ];
+
+// Funzione per ottenere l'URL base dalla richiesta
+function getBaseUrl(req) {
+  // Usa BASE_URL se configurato, altrimenti rileva dalla richiesta
+  if (process.env.BASE_URL) {
+    return process.env.BASE_URL;
+  }
+  const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
+  const host = req.get('x-forwarded-host') || req.get('host');
+  return `${protocol}://${host}`;
+}
+
+// Funzione per creare oauth2Client con redirect URI dinamico
+function createOAuth2Client(redirectUri) {
+  return new google.auth.OAuth2(
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    redirectUri
+  );
+}
 
 // GET /auth/login - Pagina di login
 router.get('/login', (req, res) => {
@@ -135,6 +147,13 @@ router.get('/login', (req, res) => {
 
 // GET /auth/google - Redirect a Google OAuth
 router.get('/google', (req, res) => {
+  const baseUrl = getBaseUrl(req);
+  const redirectUri = `${baseUrl}/auth/google/callback`;
+  const oauth2Client = createOAuth2Client(redirectUri);
+
+  // Salva il redirect URI in sessione per il callback
+  req.session.oauth_redirect_uri = redirectUri;
+
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: SCOPES,
@@ -156,6 +175,11 @@ router.get('/google/callback', async (req, res) => {
   }
 
   try {
+    // Usa il redirect URI salvato in sessione o rileva dalla richiesta
+    const baseUrl = getBaseUrl(req);
+    const redirectUri = req.session.oauth_redirect_uri || `${baseUrl}/auth/google/callback`;
+    const oauth2Client = createOAuth2Client(redirectUri);
+
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
 
