@@ -1028,7 +1028,22 @@ a:hover {
 
 .kanban-column.drag-over {
   border-color: var(--accent-primary);
-  background: rgba(14, 165, 233, 0.05);
+  background: rgba(14, 165, 233, 0.1);
+  box-shadow: 0 0 20px rgba(14, 165, 233, 0.3);
+}
+
+.kanban-card.dragging {
+  opacity: 0.5;
+  transform: rotate(3deg);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.kanban-card {
+  cursor: grab;
+}
+
+.kanban-card:active {
+  cursor: grabbing;
 }
 
 /* Stage Colors */

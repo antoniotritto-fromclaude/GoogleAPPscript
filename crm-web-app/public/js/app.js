@@ -3038,7 +3038,10 @@ function renderPipelineKanban(deals) {
     const totalValue = stageDeals.reduce((sum, d) => sum + (d.aum_previsto || 0), 0);
 
     return `
-      <div class="kanban-column" data-stage="${stage.key}">
+      <div class="kanban-column" data-stage="${stage.key}"
+           ondragover="handleDragOver(event)"
+           ondragleave="handleDragLeave(event)"
+           ondrop="handleDrop(event, '${stage.key}')">
         <div class="kanban-header">
           <div>
             <div class="kanban-title">
@@ -3051,7 +3054,13 @@ function renderPipelineKanban(deals) {
         </div>
         <div class="kanban-cards">
           ${stageDeals.map(deal => `
-            <div class="kanban-card" onclick="showMoveLeadModal(${deal.id}, '${deal.nome_deal.replace(/'/g, "\\'")}', '${deal.stage}')">
+            <div class="kanban-card"
+                 draggable="true"
+                 data-deal-id="${deal.id}"
+                 data-deal-stage="${deal.stage}"
+                 ondragstart="handleDragStart(event, ${deal.id})"
+                 ondragend="handleDragEnd(event)"
+                 onclick="showMoveLeadModal(${deal.id}, '${deal.nome_deal.replace(/'/g, "\\'")}', '${deal.stage}')">
               <div class="kanban-card-title">${deal.nome_deal}</div>
               <div class="kanban-card-subtitle">${deal.contatto_nome || 'N/A'}</div>
               <div class="kanban-card-value">${formatCurrency(deal.aum_previsto || 0)}</div>
@@ -3065,6 +3074,52 @@ function renderPipelineKanban(deals) {
       </div>
     `;
   }).join('');
+}
+
+// ========== DRAG & DROP HANDLERS ==========
+let draggedDealId = null;
+
+function handleDragStart(event, dealId) {
+  draggedDealId = dealId;
+  event.target.classList.add('dragging');
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', dealId);
+}
+
+function handleDragEnd(event) {
+  event.target.classList.remove('dragging');
+  draggedDealId = null;
+  // Rimuovi evidenziazione da tutte le colonne
+  document.querySelectorAll('.kanban-column').forEach(col => {
+    col.classList.remove('drag-over');
+  });
+}
+
+function handleDragOver(event) {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  event.currentTarget.classList.add('drag-over');
+}
+
+function handleDragLeave(event) {
+  event.currentTarget.classList.remove('drag-over');
+}
+
+async function handleDrop(event, newStage) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('drag-over');
+
+  const dealId = event.dataTransfer.getData('text/plain') || draggedDealId;
+  if (!dealId) return;
+
+  // Trova lo stage corrente del deal
+  const card = document.querySelector(`[data-deal-id="${dealId}"]`);
+  const currentStage = card ? card.dataset.dealStage : null;
+
+  // Non fare nulla se lo stage e lo stesso
+  if (currentStage === newStage) return;
+
+  await moveDealToStage(parseInt(dealId), newStage);
 }
 
 // Mostra modal per spostare il lead
@@ -3102,14 +3157,27 @@ function showMoveLeadModal(dealId, dealName, currentStage) {
 // Sposta il deal a un nuovo stage
 async function moveDealToStage(dealId, newStage) {
   try {
-    await fetchAPI(`/pipeline/${dealId}`, {
+    const response = await fetch(`${API_BASE}/pipeline/${dealId}`, {
       method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({ stage: newStage })
     });
 
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Errore HTTP ${response.status}`);
+    }
+
     closeModal();
-    loadPipelineKanban();
+    await loadPipelineKanban();
+    // Aggiorna anche la dashboard se visibile
+    if (!document.getElementById('page-dashboard').classList.contains('hidden')) {
+      loadDashboard();
+    }
   } catch (error) {
+    console.error('Errore spostamento deal:', error);
     alert('Errore nello spostamento del deal: ' + error.message);
   }
 }

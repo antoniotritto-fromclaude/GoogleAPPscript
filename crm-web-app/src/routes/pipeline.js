@@ -227,14 +227,15 @@ router.put('/:id', (req, res) => {
 
     const stageChanged = stage && stage !== deal.stage;
 
-    // Probabilità allineate al foglio Excel
+    // Probabilita allineate al foglio Excel
     const probabilitaMap = {
       'Prospect': 10, 'Lead': 20, 'Primo Contatto': 40, 'Appuntamento': 60,
       'Secondo Appuntamento': 75, 'Chiusura': 90, 'Cliente Attivo': 100, 'Chiuso Perso': 0
     };
-    const probabilita = stage ? probabilitaMap[stage] : deal.probabilita;
-    const aum = aum_previsto !== undefined ? aum_previsto : deal.aum_previsto;
-    const feePerc = fee_percentuale !== undefined ? fee_percentuale : deal.fee_percentuale;
+    // Usa probabilita dalla mappa, o mantieni quella esistente se lo stage non e nella mappa
+    const probabilita = stage ? (probabilitaMap[stage] !== undefined ? probabilitaMap[stage] : deal.probabilita) : deal.probabilita;
+    const aum = aum_previsto !== undefined ? (parseFloat(aum_previsto) || 0) : (deal.aum_previsto || 0);
+    const feePerc = fee_percentuale !== undefined ? (parseFloat(fee_percentuale) || 0.5) : (deal.fee_percentuale || 0.5);
     const fee_stimata = aum * (feePerc / 100);
 
     db.prepare(`
