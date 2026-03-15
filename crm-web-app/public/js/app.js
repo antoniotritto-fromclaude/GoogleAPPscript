@@ -2995,7 +2995,7 @@ function setPipelineView(view) {
   if (view === 'kanban') {
     loadPipelineKanban();
   } else {
-    loadPipeline();
+    loadPipelineTableView();
   }
 }
 
@@ -3029,8 +3029,7 @@ function renderPipelineKanban(deals) {
     const totalValue = stageDeals.reduce((sum, d) => sum + (d.aum_previsto || 0), 0);
 
     return `
-      <div class="kanban-column" data-stage="${stage.key}"
-           ondragover="onDragOver(event)" ondrop="onDrop(event, '${stage.key}')">
+      <div class="kanban-column" data-stage="${stage.key}">
         <div class="kanban-header">
           <div>
             <div class="kanban-title">
@@ -3043,10 +3042,7 @@ function renderPipelineKanban(deals) {
         </div>
         <div class="kanban-cards">
           ${stageDeals.map(deal => `
-            <div class="kanban-card" draggable="true"
-                 ondragstart="onDragStart(event, ${deal.id})"
-                 ondragend="onDragEnd(event)"
-                 onclick="editDeal(${deal.id})">
+            <div class="kanban-card" onclick="showMoveLeadModal(${deal.id}, '${deal.nome_deal.replace(/'/g, "\\'")}', '${deal.stage}')">
               <div class="kanban-card-title">${deal.nome_deal}</div>
               <div class="kanban-card-subtitle">${deal.contatto_nome || 'N/A'}</div>
               <div class="kanban-card-value">${formatCurrency(deal.aum_previsto || 0)}</div>
@@ -3062,41 +3058,50 @@ function renderPipelineKanban(deals) {
   }).join('');
 }
 
-let draggedDealId = null;
+// Mostra modal per spostare il lead
+function showMoveLeadModal(dealId, dealName, currentStage) {
+  const stageButtons = pipelineStages.map(stage => {
+    const isCurrentStage = stage.key === currentStage;
+    return `
+      <button class="btn ${isCurrentStage ? 'btn-secondary' : 'btn-primary'}"
+              style="width: 100%; justify-content: flex-start; gap: 10px; ${isCurrentStage ? 'opacity: 0.5; cursor: not-allowed;' : ''}"
+              onclick="${isCurrentStage ? '' : `moveDealToStage(${dealId}, '${stage.key}')`}"
+              ${isCurrentStage ? 'disabled' : ''}>
+        <span class="stage-dot" style="background: ${stage.color}; width: 12px; height: 12px; border-radius: 50%; display: inline-block;"></span>
+        ${stage.label}
+        ${isCurrentStage ? '<span style="margin-left: auto; font-size: 11px;">(attuale)</span>' : ''}
+      </button>
+    `;
+  }).join('');
 
-function onDragStart(e, dealId) {
-  draggedDealId = dealId;
-  e.target.classList.add('dragging');
-  e.dataTransfer.effectAllowed = 'move';
+  const content = `
+    <div style="text-align: center; margin-bottom: var(--spacing-lg);">
+      <h4 style="margin-bottom: var(--spacing-sm);">${dealName}</h4>
+      <p style="color: var(--text-secondary);">Stato attuale: <strong>${currentStage}</strong></p>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: var(--spacing-sm);">
+      <p style="font-weight: 500; margin-bottom: var(--spacing-sm);">Sposta a:</p>
+      ${stageButtons}
+    </div>
+  `;
+
+  openModal('Sposta Lead', content, null);
+  // Nascondi il pulsante Salva perche usiamo i bottoni per lo stage
+  document.getElementById('modal-submit').style.display = 'none';
 }
 
-function onDragEnd(e) {
-  e.target.classList.remove('dragging');
-  document.querySelectorAll('.kanban-column').forEach(col => col.classList.remove('drag-over'));
-}
-
-function onDragOver(e) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  e.currentTarget.classList.add('drag-over');
-}
-
-async function onDrop(e, newStage) {
-  e.preventDefault();
-  e.currentTarget.classList.remove('drag-over');
-
-  if (!draggedDealId) return;
-
+// Sposta il deal a un nuovo stage
+async function moveDealToStage(dealId, newStage) {
   try {
-    await fetchAPI(`/pipeline/${draggedDealId}`, {
+    await fetchAPI(`/pipeline/${dealId}`, {
       method: 'PUT',
       body: JSON.stringify({ stage: newStage })
     });
 
+    closeModal();
     loadPipelineKanban();
-    draggedDealId = null;
   } catch (error) {
-    alert('Errore nello spostamento del deal');
+    alert('Errore nello spostamento del deal: ' + error.message);
   }
 }
 

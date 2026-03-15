@@ -981,7 +981,7 @@ a:hover {
   border-radius: var(--radius-md);
   padding: var(--spacing-md);
   margin-bottom: var(--spacing-sm);
-  cursor: grab;
+  cursor: pointer;
   transition: all 0.2s;
 }
 
@@ -989,12 +989,7 @@ a:hover {
   border-color: var(--accent-primary);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
-}
-
-.kanban-card.dragging {
-  opacity: 0.5;
-  transform: rotate(3deg);
-  cursor: grabbing;
+  background: var(--bg-card-hover);
 }
 
 .kanban-card-title {
