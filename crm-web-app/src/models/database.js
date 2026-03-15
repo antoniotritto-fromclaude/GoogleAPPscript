@@ -28,16 +28,22 @@ function saveDatabase() {
   }
 }
 
-// Salva periodicamente
+// Salva immediatamente con debounce opzionale per batch operations
 let pendingSave = false;
+let saveTimeout = null;
+
 function scheduleSave() {
-  if (!pendingSave) {
-    pendingSave = true;
-    setTimeout(() => {
-      saveDatabase();
-      pendingSave = false;
-    }, 500);
-  }
+  // Salvataggio immediato per garantire persistenza
+  saveDatabase();
+}
+
+// Versione con debounce per operazioni batch
+function scheduleSaveDebounced() {
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    saveDatabase();
+    saveTimeout = null;
+  }, 300);
 }
 
 // Wrapper per statement - compatibile con API better-sqlite3

@@ -527,6 +527,15 @@ function renderContattiTable(contatti) {
 
 // Pipeline
 async function loadPipeline(stage = '') {
+  // Carica vista corrente (kanban o tabella)
+  if (typeof currentPipelineView !== 'undefined' && currentPipelineView === 'kanban') {
+    await loadPipelineKanban();
+  } else {
+    await loadPipelineTableView(stage);
+  }
+}
+
+async function loadPipelineTableView(stage = '') {
   try {
     const params = stage ? `?stage=${encodeURIComponent(stage)}` : '';
     const data = await fetchAPI(`/pipeline${params}`);
@@ -646,6 +655,9 @@ async function loadChiamate() {
     document.getElementById('tasso-successo').textContent = stats.tassoConversione + '%';
 
     renderChiamateTable(chiamate);
+
+    // Carica anche la sezione clienti da chiamare
+    loadClientiPerChiamate();
   } catch (error) {
     console.error('Error loading chiamate:', error);
   }
@@ -2958,6 +2970,300 @@ async function loadCashflow() {
   } catch (error) {
     console.error('Errore caricamento cashflow:', error);
   }
+}
+
+// ========== PIPELINE KANBAN ==========
+
+let currentPipelineView = 'kanban';
+const pipelineStages = [
+  { key: 'Prospect', label: 'Prospect', color: '#0ea5e9' },
+  { key: 'Lead', label: 'Lead', color: '#38bdf8' },
+  { key: 'Primo Contatto', label: 'Primo Contatto', color: '#22c55e' },
+  { key: 'Appuntamento', label: 'Appuntamento', color: '#f59e0b' },
+  { key: 'Secondo Appuntamento', label: '2° Appuntamento', color: '#f97316' },
+  { key: 'Chiusura', label: 'Chiusura', color: '#8b5cf6' },
+  { key: 'Cliente Attivo', label: 'Cliente Attivo', color: '#10b981' }
+];
+
+function setPipelineView(view) {
+  currentPipelineView = view;
+  document.getElementById('view-kanban').classList.toggle('active', view === 'kanban');
+  document.getElementById('view-table').classList.toggle('active', view === 'table');
+  document.getElementById('pipeline-kanban-view').classList.toggle('hidden', view !== 'kanban');
+  document.getElementById('pipeline-table-view').classList.toggle('hidden', view !== 'table');
+
+  if (view === 'kanban') {
+    loadPipelineKanban();
+  } else {
+    loadPipeline();
+  }
+}
+
+async function loadPipelineKanban() {
+  try {
+    const deals = await fetchAPI('/pipeline?limit=500');
+    renderPipelineKanban(deals);
+  } catch (error) {
+    console.error('Error loading pipeline kanban:', error);
+  }
+}
+
+function renderPipelineKanban(deals) {
+  const container = document.getElementById('pipeline-kanban-view');
+
+  // Raggruppa deal per stage
+  const dealsByStage = {};
+  pipelineStages.forEach(s => dealsByStage[s.key] = []);
+
+  deals.forEach(deal => {
+    if (dealsByStage[deal.stage]) {
+      dealsByStage[deal.stage].push(deal);
+    } else {
+      // Stage non riconosciuto, metti in Lead
+      dealsByStage['Lead'].push(deal);
+    }
+  });
+
+  container.innerHTML = pipelineStages.map(stage => {
+    const stageDeals = dealsByStage[stage.key] || [];
+    const totalValue = stageDeals.reduce((sum, d) => sum + (d.aum_previsto || 0), 0);
+
+    return `
+      <div class="kanban-column" data-stage="${stage.key}"
+           ondragover="onDragOver(event)" ondrop="onDrop(event, '${stage.key}')">
+        <div class="kanban-header">
+          <div>
+            <div class="kanban-title">
+              <span class="stage-dot" style="background: ${stage.color}"></span>
+              ${stage.label}
+            </div>
+            <div class="kanban-total">${formatCurrency(totalValue)}</div>
+          </div>
+          <span class="kanban-count">${stageDeals.length}</span>
+        </div>
+        <div class="kanban-cards">
+          ${stageDeals.map(deal => `
+            <div class="kanban-card" draggable="true"
+                 ondragstart="onDragStart(event, ${deal.id})"
+                 ondragend="onDragEnd(event)"
+                 onclick="editDeal(${deal.id})">
+              <div class="kanban-card-title">${deal.nome_deal}</div>
+              <div class="kanban-card-subtitle">${deal.contatto_nome || 'N/A'}</div>
+              <div class="kanban-card-value">${formatCurrency(deal.aum_previsto || 0)}</div>
+              <div class="kanban-card-meta">
+                <span class="kanban-card-probability">${deal.probabilita || 0}%</span>
+                <span>${deal.giorni_in_stage || 0}g</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+let draggedDealId = null;
+
+function onDragStart(e, dealId) {
+  draggedDealId = dealId;
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function onDragEnd(e) {
+  e.target.classList.remove('dragging');
+  document.querySelectorAll('.kanban-column').forEach(col => col.classList.remove('drag-over'));
+}
+
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+async function onDrop(e, newStage) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+
+  if (!draggedDealId) return;
+
+  try {
+    await fetchAPI(`/pipeline/${draggedDealId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ stage: newStage })
+    });
+
+    loadPipelineKanban();
+    draggedDealId = null;
+  } catch (error) {
+    alert('Errore nello spostamento del deal');
+  }
+}
+
+// ========== GESTIONE CHIAMATE CLIENTI ==========
+
+async function loadClientiPerChiamate() {
+  try {
+    const data = await fetchAPI('/contatti?is_cliente=true&limit=50');
+    const clienti = data.contatti || [];
+
+    const container = document.getElementById('clienti-chiamate-container');
+
+    if (!clienti || clienti.length === 0) {
+      container.innerHTML = '<div class="empty-state"><p>Nessun cliente attivo trovato</p></div>';
+      return;
+    }
+
+    // Per ogni cliente, calcola statistiche chiamate
+    const clientiConStats = await Promise.all(clienti.map(async (c) => {
+      try {
+        // Ottieni le chiamate del cliente
+        const chiamateData = await fetchAPI(`/contatti/${c.id}`);
+        const chiamate = chiamateData.chiamate || [];
+
+        return {
+          ...c,
+          totaleChiamate: chiamate.length,
+          ultimaChiamata: chiamate[0]?.data_chiamata || null,
+          followUpPendenti: chiamate.filter(ch => ch.data_follow_up && !ch.follow_up_completato).length
+        };
+      } catch (e) {
+        return { ...c, totaleChiamate: 0, ultimaChiamata: null, followUpPendenti: 0 };
+      }
+    }));
+
+    container.innerHTML = clientiConStats.map(c => {
+      const initials = `${(c.nome || '')[0] || ''}${(c.cognome || '')[0] || ''}`.toUpperCase() || 'N';
+      const nomeCompleto = `${c.nome || ''} ${c.cognome || ''}`.trim();
+      const azienda = c.azienda || 'N/A';
+      const ultimaChiamataStr = c.ultimaChiamata ? formatDate(c.ultimaChiamata) : 'Mai';
+
+      return `
+        <div class="cliente-call-card">
+          <div class="cliente-call-header">
+            <div class="cliente-info">
+              <div class="cliente-avatar">${initials}</div>
+              <div class="cliente-details">
+                <h4>${nomeCompleto}</h4>
+                <p>${azienda} ${c.telefono ? '• ' + c.telefono : ''}</p>
+              </div>
+            </div>
+            <div class="cliente-actions">
+              <button class="btn-call" onclick="chiamaCliente(${c.id}, '${nomeCompleto.replace(/'/g, "\\'")}')">
+                <i class="bi bi-telephone-fill"></i> Chiama
+              </button>
+              <button class="btn btn-secondary" onclick="editContatto(${c.id})">
+                <i class="bi bi-eye"></i> Dettagli
+              </button>
+            </div>
+          </div>
+          <div class="call-stats">
+            <div class="call-stat">
+              <div class="call-stat-value">${c.totaleChiamate}</div>
+              <div class="call-stat-label">Chiamate</div>
+            </div>
+            <div class="call-stat">
+              <div class="call-stat-value">${ultimaChiamataStr}</div>
+              <div class="call-stat-label">Ultima</div>
+            </div>
+            <div class="call-stat">
+              <div class="call-stat-value" style="color: ${c.followUpPendenti > 0 ? 'var(--warning)' : 'var(--success)'}">
+                ${c.followUpPendenti}
+              </div>
+              <div class="call-stat-label">Follow-up</div>
+            </div>
+            <div class="call-stat">
+              <div class="call-stat-value">${formatCurrency(c.aum_potenziale || c.somma_versata || 0)}</div>
+              <div class="call-stat-label">AUM</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    console.error('Errore caricamento clienti per chiamate:', error);
+    document.getElementById('clienti-chiamate-container').innerHTML =
+      '<div class="empty-state"><p>Errore nel caricamento</p></div>';
+  }
+}
+
+function chiamaCliente(contattoId, nomeContatto) {
+  // Apri modal per registrare la chiamata
+  const content = `
+    <form id="chiamata-cliente-form">
+      <input type="hidden" name="contatto_id" value="${contattoId}">
+      <div class="form-group">
+        <label class="form-label">Cliente</label>
+        <input type="text" class="form-input" name="contatto_nome" value="${nomeContatto}" readonly>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Tipo Chiamata</label>
+          <select class="form-select" name="tipo_chiamata">
+            <option value="Check-in Cliente">Check-in Cliente</option>
+            <option value="Follow-up">Follow-up</option>
+            <option value="Assistenza">Assistenza</option>
+            <option value="Aggiornamento Portfolio">Aggiornamento Portfolio</option>
+            <option value="Proposta Investimento">Proposta Investimento</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Durata (min)</label>
+          <input type="number" class="form-input" name="durata_minuti" value="10" min="1">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Esito</label>
+          <select class="form-select" name="esito">
+            <option value="Completata">Completata</option>
+            <option value="Non Risponde">Non Risponde</option>
+            <option value="Richiamare">Richiamare</option>
+            <option value="Interessato">Interessato a nuovi prodotti</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Soddisfazione</label>
+          <select class="form-select" name="qualita">
+            <option value="Ottima">Ottima</option>
+            <option value="Buona">Buona</option>
+            <option value="Sufficiente">Sufficiente</option>
+            <option value="Critica">Critica</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Note</label>
+        <textarea class="form-textarea" name="note" rows="3" placeholder="Appunti sulla chiamata..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prossima Azione</label>
+        <input type="text" class="form-input" name="prossimi_passi" placeholder="Es: Inviare proposta, Fissare appuntamento...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data Follow-up</label>
+        <input type="date" class="form-input" name="data_follow_up">
+      </div>
+    </form>
+  `;
+
+  openModal('Registra Chiamata Cliente', content, async () => {
+    const form = document.getElementById('chiamata-cliente-form');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+
+    try {
+      await fetchAPI('/chiamate', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+      closeModal();
+      loadClientiPerChiamate();
+      loadChiamate();
+    } catch (error) {
+      alert('Errore nel salvataggio della chiamata');
+    }
+  });
 }
 
 // Initialize

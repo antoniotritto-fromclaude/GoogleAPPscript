@@ -385,37 +385,55 @@
           <div class="card-header">
             <div>
               <h3 class="card-title">Sales Pipeline</h3>
-              <p class="card-subtitle">Gestione opportunità di vendita</p>
+              <p class="card-subtitle">Trascina i deal per cambiare lo stato</p>
             </div>
-            <button class="btn btn-primary" onclick="showAddDeal()">
-              <i class="bi bi-plus-lg"></i> Nuovo Deal
-            </button>
+            <div style="display: flex; gap: var(--spacing-md); align-items: center;">
+              <div class="view-toggle">
+                <button class="view-toggle-btn active" onclick="setPipelineView('kanban')" id="view-kanban">
+                  <i class="bi bi-kanban"></i> Kanban
+                </button>
+                <button class="view-toggle-btn" onclick="setPipelineView('table')" id="view-table">
+                  <i class="bi bi-table"></i> Tabella
+                </button>
+              </div>
+              <button class="btn btn-primary" onclick="showAddDeal()">
+                <i class="bi bi-plus-lg"></i> Nuovo Deal
+              </button>
+            </div>
           </div>
           <div class="card-body">
-            <div class="tabs">
-              <button class="tab active" data-stage="">Tutti</button>
-              <button class="tab" data-stage="Lead">Lead</button>
-              <button class="tab" data-stage="Qualificato">Qualificato</button>
-              <button class="tab" data-stage="Proposta Inviata">Proposta</button>
-              <button class="tab" data-stage="Negoziazione">Negoziazione</button>
-              <button class="tab" data-stage="Cliente Attivo">Chiusi</button>
+            <!-- Vista Kanban -->
+            <div id="pipeline-kanban-view" class="pipeline-kanban">
+              <div class="loading"><div class="spinner"></div></div>
             </div>
-            <table class="performance-table">
-              <thead>
-                <tr>
-                  <th>Deal</th>
-                  <th>Stage</th>
-                  <th>AUM Previsto</th>
-                  <th>Probabilità</th>
-                  <th>Giorni</th>
-                  <th>Prossima Azione</th>
-                  <th>Azioni</th>
-                </tr>
-              </thead>
-              <tbody id="pipeline-table">
-                <tr><td colspan="7" class="text-center"><div class="spinner"></div></td></tr>
-              </tbody>
-            </table>
+
+            <!-- Vista Tabella (nascosta di default) -->
+            <div id="pipeline-table-view" class="hidden">
+              <div class="tabs">
+                <button class="tab active" data-stage="">Tutti</button>
+                <button class="tab" data-stage="Lead">Lead</button>
+                <button class="tab" data-stage="Primo Contatto">Primo Contatto</button>
+                <button class="tab" data-stage="Appuntamento">Appuntamento</button>
+                <button class="tab" data-stage="Chiusura">Chiusura</button>
+                <button class="tab" data-stage="Cliente Attivo">Chiusi</button>
+              </div>
+              <table class="performance-table">
+                <thead>
+                  <tr>
+                    <th>Deal</th>
+                    <th>Stage</th>
+                    <th>AUM Previsto</th>
+                    <th>Probabilità</th>
+                    <th>Giorni</th>
+                    <th>Prossima Azione</th>
+                    <th>Azioni</th>
+                  </tr>
+                </thead>
+                <tbody id="pipeline-table">
+                  <tr><td colspan="7" class="text-center"><div class="spinner"></div></td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -484,6 +502,24 @@
               <div class="kpi-icon green"><i class="bi bi-percent"></i></div>
             </div>
             <div class="kpi-value green" id="tasso-successo">-%</div>
+          </div>
+        </div>
+
+        <!-- Sezione Clienti da Chiamare -->
+        <div class="card" style="margin-bottom: var(--spacing-lg);">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Clienti da Chiamare</h3>
+              <p class="card-subtitle">Gestisci le chiamate ai tuoi clienti attivi</p>
+            </div>
+            <button class="btn btn-secondary" onclick="loadClientiPerChiamate()">
+              <i class="bi bi-arrow-clockwise"></i> Aggiorna
+            </button>
+          </div>
+          <div class="card-body">
+            <div id="clienti-chiamate-container">
+              <div class="loading"><div class="spinner"></div></div>
+            </div>
           </div>
         </div>
 
