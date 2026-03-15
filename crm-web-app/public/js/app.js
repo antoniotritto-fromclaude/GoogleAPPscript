@@ -1345,18 +1345,27 @@ async function advanceDeal(id) {
 
   try {
     const deal = await fetchAPI(`/pipeline/${id}`);
-    const stages = ['Lead', 'Contatto', 'Qualificato', 'Proposta Inviata', 'Negoziazione', 'Contratto Inviato', 'Contratto Firmato', 'Cliente Attivo'];
+    // Usa gli stessi stage del Kanban
+    const stages = pipelineStages.map(s => s.key);
     const currentIndex = stages.indexOf(deal.deal.stage);
+
+    if (currentIndex === -1) {
+      alert('Stage non riconosciuto: ' + deal.deal.stage);
+      return;
+    }
 
     if (currentIndex < stages.length - 1) {
       await fetchAPI(`/pipeline/${id}`, {
         method: 'PUT',
         body: JSON.stringify({ stage: stages[currentIndex + 1] })
       });
-      loadPipeline();
+      loadPipelineTableView();
+    } else {
+      alert('Il deal è già all\'ultimo stage');
     }
   } catch (error) {
-    alert('Errore nell\'avanzamento');
+    console.error('Errore avanzamento:', error);
+    alert('Errore nell\'avanzamento: ' + error.message);
   }
 }
 
