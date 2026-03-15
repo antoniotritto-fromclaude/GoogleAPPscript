@@ -166,8 +166,13 @@ router.get('/google', (req, res) => {
 router.get('/google/callback', async (req, res) => {
   const { code, error } = req.query;
 
+  console.log('🔐 OAuth callback ricevuto');
+  console.log('🔐 Error param:', error);
+  console.log('🔐 Code presente:', !!code);
+
   if (error) {
-    return res.redirect('/auth/login?error=Accesso negato');
+    console.log('🔐 Errore OAuth:', error);
+    return res.redirect('/auth/login?error=Accesso negato: ' + error);
   }
 
   if (!code) {
@@ -178,9 +183,12 @@ router.get('/google/callback', async (req, res) => {
     // Usa il redirect URI salvato in sessione o rileva dalla richiesta
     const baseUrl = getBaseUrl(req);
     const redirectUri = req.session.oauth_redirect_uri || `${baseUrl}/auth/google/callback`;
+    console.log('🔐 Redirect URI usato:', redirectUri);
+
     const oauth2Client = createOAuth2Client(redirectUri);
 
     const { tokens } = await oauth2Client.getToken(code);
+    console.log('🔐 Token ottenuto con successo');
     oauth2Client.setCredentials(tokens);
 
     // Ottieni info utente
@@ -190,9 +198,11 @@ router.get('/google/callback', async (req, res) => {
     const email = userInfo.data.email;
     const name = userInfo.data.name;
     const picture = userInfo.data.picture;
+    console.log('🔐 Utente:', email, name);
 
     // Verifica se l'email è autorizzata (se la lista è configurata)
     if (AUTHORIZED_EMAILS.length > 0 && !AUTHORIZED_EMAILS.includes(email)) {
+      console.log('🔐 Email non autorizzata:', email);
       return res.redirect('/auth/login?error=Email non autorizzata');
     }
 
@@ -208,8 +218,10 @@ router.get('/google/callback', async (req, res) => {
     res.redirect('/');
 
   } catch (err) {
-    console.error('Errore login:', err);
-    res.redirect('/auth/login?error=Errore durante il login');
+    console.error('🔐 Errore login:', err.message);
+    console.error('🔐 Stack:', err.stack);
+    const errorMsg = encodeURIComponent(err.message || 'Errore durante il login');
+    res.redirect('/auth/login?error=' + errorMsg);
   }
 });
 
