@@ -1,10 +1,13 @@
 /**
- * Authentication Routes - Google OAuth Login
+ * Authentication Routes - Google OAuth + Email/Password Login
  */
 
 const express = require('express');
 const router = express.Router();
 const { google } = require('googleapis');
+const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
 
 // OAuth2 Configuration
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
@@ -18,17 +21,44 @@ const SCOPES = [
   'https://www.googleapis.com/auth/userinfo.profile'
 ];
 
+// File per salvare gli utenti registrati
+const USERS_FILE = path.join(__dirname, '../../data/users.json');
+
+// Assicura che la directory data esista
+function ensureDataDir() {
+  const dataDir = path.dirname(USERS_FILE);
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+}
+
+// Carica utenti dal file
+function loadUsers() {
+  ensureDataDir();
+  if (fs.existsSync(USERS_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+    } catch (e) {
+      return {};
+    }
+  }
+  return {};
+}
+
+// Salva utenti nel file
+function saveUsers(users) {
+  ensureDataDir();
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+
 // Funzione per ottenere l'URL base dalla richiesta
 function getBaseUrl(req) {
-  // Usa BASE_URL se configurato
   if (process.env.BASE_URL) {
     return process.env.BASE_URL;
   }
 
-  // Rileva automaticamente per Render e altri servizi cloud
   const host = req.get('x-forwarded-host') || req.get('host');
 
-  // Su Render, Heroku, e altri servizi cloud, usa sempre HTTPS
   if (host && (host.includes('.onrender.com') || host.includes('.herokuapp.com') || host.includes('.vercel.app'))) {
     return `https://${host}`;
   }
@@ -46,11 +76,195 @@ function createOAuth2Client(redirectUri) {
   );
 }
 
+// Stili CSS comuni per le pagine di auth
+const authStyles = `
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .login-container {
+    background: #1e1e2e;
+    border-radius: 16px;
+    padding: 40px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    max-width: 420px;
+    width: 90%;
+  }
+  .logo {
+    width: 70px;
+    height: 70px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+    font-size: 28px;
+    font-weight: 700;
+    color: white;
+  }
+  h1 {
+    color: #fff;
+    font-size: 22px;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    color: #888;
+    margin-bottom: 24px;
+    font-size: 14px;
+  }
+  .divider {
+    display: flex;
+    align-items: center;
+    margin: 24px 0;
+    color: #666;
+    font-size: 13px;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #333;
+  }
+  .divider span {
+    padding: 0 16px;
+  }
+  .form-group {
+    margin-bottom: 16px;
+    text-align: left;
+  }
+  .form-group label {
+    display: block;
+    color: #aaa;
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+  .form-group input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #2a2a3e;
+    color: #fff;
+    font-size: 15px;
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+  .google-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: #4285f4;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.2s;
+    width: 100%;
+  }
+  .google-btn:hover {
+    background: #3367d6;
+  }
+  .google-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+  .submit-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    margin-top: 8px;
+  }
+  .submit-btn:hover {
+    opacity: 0.9;
+  }
+  .error {
+    background: rgba(255, 71, 87, 0.2);
+    border: 1px solid #ff4757;
+    color: #ff6b7a;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+  .success {
+    background: rgba(46, 213, 115, 0.2);
+    border: 1px solid #2ed573;
+    color: #7bed9f;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+  .link {
+    color: #667eea;
+    text-decoration: none;
+    font-size: 14px;
+  }
+  .link:hover {
+    text-decoration: underline;
+  }
+  .footer-text {
+    margin-top: 20px;
+    color: #666;
+    font-size: 14px;
+  }
+  .tabs {
+    display: flex;
+    margin-bottom: 24px;
+    background: #2a2a3e;
+    border-radius: 8px;
+    padding: 4px;
+  }
+  .tab {
+    flex: 1;
+    padding: 10px;
+    text-align: center;
+    color: #888;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .tab.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+  }
+  .tab:hover:not(.active) {
+    color: #fff;
+  }
+`;
+
 // GET /auth/login - Pagina di login
 router.get('/login', (req, res) => {
   if (req.session && req.session.user) {
     return res.redirect('/');
   }
+
+  const error = req.query.error || '';
+  const success = req.query.success || '';
 
   res.send(`
     <!DOCTYPE html>
@@ -60,84 +274,36 @@ router.get('/login', (req, res) => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Login - CRM Antonio Tritto</title>
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-          font-family: 'Inter', sans-serif;
-          background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .login-container {
-          background: #1e1e2e;
-          border-radius: 16px;
-          padding: 48px;
-          text-align: center;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-          max-width: 400px;
-          width: 90%;
-        }
-        .logo {
-          width: 80px;
-          height: 80px;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          border-radius: 20px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin: 0 auto 24px;
-          font-size: 32px;
-          font-weight: 700;
-          color: white;
-        }
-        h1 {
-          color: #fff;
-          font-size: 24px;
-          margin-bottom: 8px;
-        }
-        p {
-          color: #888;
-          margin-bottom: 32px;
-        }
-        .google-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 12px;
-          background: #4285f4;
-          color: white;
-          border: none;
-          padding: 14px 32px;
-          border-radius: 8px;
-          font-size: 16px;
-          font-weight: 500;
-          cursor: pointer;
-          text-decoration: none;
-          transition: background 0.2s;
-        }
-        .google-btn:hover {
-          background: #3367d6;
-        }
-        .google-btn svg {
-          width: 20px;
-          height: 20px;
-        }
-        .error {
-          background: #ff4757;
-          color: white;
-          padding: 12px;
-          border-radius: 8px;
-          margin-bottom: 24px;
-        }
-      </style>
+      <style>${authStyles}</style>
     </head>
     <body>
       <div class="login-container">
         <div class="logo">AT</div>
         <h1>CRM Antonio Tritto</h1>
-        <p>Private Banking Dashboard</p>
-        ${req.query.error ? `<div class="error">${req.query.error}</div>` : ''}
+        <p class="subtitle">Private Banking Dashboard</p>
+
+        <div class="tabs">
+          <a href="/auth/login" class="tab active">Accedi</a>
+          <a href="/auth/register" class="tab">Registrati</a>
+        </div>
+
+        ${error ? `<div class="error">${error}</div>` : ''}
+        ${success ? `<div class="success">${success}</div>` : ''}
+
+        <form action="/auth/login" method="POST">
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required placeholder="tua@email.com">
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required placeholder="La tua password">
+          </div>
+          <button type="submit" class="submit-btn">Accedi</button>
+        </form>
+
+        <div class="divider"><span>oppure</span></div>
+
         <a href="/auth/google" class="google-btn">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -147,10 +313,172 @@ router.get('/login', (req, res) => {
           </svg>
           Accedi con Google
         </a>
+
+        <p class="footer-text">
+          Non hai un account? <a href="/auth/register" class="link">Registrati</a>
+        </p>
       </div>
     </body>
     </html>
   `);
+});
+
+// GET /auth/register - Pagina di registrazione
+router.get('/register', (req, res) => {
+  if (req.session && req.session.user) {
+    return res.redirect('/');
+  }
+
+  const error = req.query.error || '';
+
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="it">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Registrati - CRM Antonio Tritto</title>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+      <style>${authStyles}</style>
+    </head>
+    <body>
+      <div class="login-container">
+        <div class="logo">AT</div>
+        <h1>Crea il tuo account</h1>
+        <p class="subtitle">Registrati per accedere al CRM</p>
+
+        <div class="tabs">
+          <a href="/auth/login" class="tab">Accedi</a>
+          <a href="/auth/register" class="tab active">Registrati</a>
+        </div>
+
+        ${error ? `<div class="error">${error}</div>` : ''}
+
+        <form action="/auth/register" method="POST">
+          <div class="form-group">
+            <label for="name">Nome completo</label>
+            <input type="text" id="name" name="name" required placeholder="Mario Rossi">
+          </div>
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required placeholder="tua@email.com">
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required minlength="6" placeholder="Minimo 6 caratteri">
+          </div>
+          <div class="form-group">
+            <label for="confirmPassword">Conferma Password</label>
+            <input type="password" id="confirmPassword" name="confirmPassword" required placeholder="Ripeti la password">
+          </div>
+          <button type="submit" class="submit-btn">Registrati</button>
+        </form>
+
+        <p class="footer-text">
+          Hai gia un account? <a href="/auth/login" class="link">Accedi</a>
+        </p>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// POST /auth/register - Registrazione utente
+router.post('/register', async (req, res) => {
+  const { name, email, password, confirmPassword } = req.body;
+
+  // Validazioni
+  if (!name || !email || !password || !confirmPassword) {
+    return res.redirect('/auth/register?error=' + encodeURIComponent('Tutti i campi sono obbligatori'));
+  }
+
+  if (password !== confirmPassword) {
+    return res.redirect('/auth/register?error=' + encodeURIComponent('Le password non coincidono'));
+  }
+
+  if (password.length < 6) {
+    return res.redirect('/auth/register?error=' + encodeURIComponent('La password deve avere almeno 6 caratteri'));
+  }
+
+  // Verifica email valida
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.redirect('/auth/register?error=' + encodeURIComponent('Email non valida'));
+  }
+
+  try {
+    const users = loadUsers();
+
+    // Verifica se l'email esiste gia
+    if (users[email.toLowerCase()]) {
+      return res.redirect('/auth/register?error=' + encodeURIComponent('Email gia registrata'));
+    }
+
+    // Hash della password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Salva utente
+    users[email.toLowerCase()] = {
+      name: name.trim(),
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      createdAt: new Date().toISOString()
+    };
+
+    saveUsers(users);
+
+    console.log(`Nuovo utente registrato: ${email}`);
+    res.redirect('/auth/login?success=' + encodeURIComponent('Registrazione completata! Ora puoi accedere.'));
+
+  } catch (err) {
+    console.error('Errore registrazione:', err);
+    res.redirect('/auth/register?error=' + encodeURIComponent('Errore durante la registrazione'));
+  }
+});
+
+// POST /auth/login - Login con email/password
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.redirect('/auth/login?error=' + encodeURIComponent('Email e password sono obbligatori'));
+  }
+
+  try {
+    const users = loadUsers();
+    const user = users[email.toLowerCase()];
+
+    if (!user) {
+      return res.redirect('/auth/login?error=' + encodeURIComponent('Email o password non corretti'));
+    }
+
+    // Verifica password
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      return res.redirect('/auth/login?error=' + encodeURIComponent('Email o password non corretti'));
+    }
+
+    // Verifica se l'email e autorizzata (se la lista e configurata)
+    if (AUTHORIZED_EMAILS.length > 0 && !AUTHORIZED_EMAILS.includes(user.email)) {
+      return res.redirect('/auth/login?error=' + encodeURIComponent('Email non autorizzata'));
+    }
+
+    // Salva sessione
+    req.session.user = {
+      email: user.email,
+      name: user.name,
+      picture: null,
+      authMethod: 'email',
+      loggedInAt: new Date().toISOString()
+    };
+
+    console.log(`Login (email): ${user.email}`);
+    res.redirect('/');
+
+  } catch (err) {
+    console.error('Errore login:', err);
+    res.redirect('/auth/login?error=' + encodeURIComponent('Errore durante il login'));
+  }
 });
 
 // GET /auth/google - Redirect a Google OAuth
@@ -159,7 +487,6 @@ router.get('/google', (req, res) => {
   const redirectUri = `${baseUrl}/auth/google/callback`;
   const oauth2Client = createOAuth2Client(redirectUri);
 
-  // Salva il redirect URI in sessione per il callback
   req.session.oauth_redirect_uri = redirectUri;
 
   const authUrl = oauth2Client.generateAuthUrl({
@@ -174,44 +501,35 @@ router.get('/google', (req, res) => {
 router.get('/google/callback', async (req, res) => {
   const { code, error } = req.query;
 
-  console.log('🔐 OAuth callback ricevuto');
-  console.log('🔐 Error param:', error);
-  console.log('🔐 Code presente:', !!code);
+  console.log('OAuth callback ricevuto');
 
   if (error) {
-    console.log('🔐 Errore OAuth:', error);
-    return res.redirect('/auth/login?error=Accesso negato: ' + error);
+    return res.redirect('/auth/login?error=' + encodeURIComponent('Accesso negato: ' + error));
   }
 
   if (!code) {
-    return res.redirect('/auth/login?error=Codice mancante');
+    return res.redirect('/auth/login?error=' + encodeURIComponent('Codice mancante'));
   }
 
   try {
-    // Usa il redirect URI salvato in sessione o rileva dalla richiesta
     const baseUrl = getBaseUrl(req);
     const redirectUri = req.session.oauth_redirect_uri || `${baseUrl}/auth/google/callback`;
-    console.log('🔐 Redirect URI usato:', redirectUri);
 
     const oauth2Client = createOAuth2Client(redirectUri);
 
     const { tokens } = await oauth2Client.getToken(code);
-    console.log('🔐 Token ottenuto con successo');
     oauth2Client.setCredentials(tokens);
 
-    // Ottieni info utente
     const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
     const userInfo = await oauth2.userinfo.get();
 
     const email = userInfo.data.email;
     const name = userInfo.data.name;
     const picture = userInfo.data.picture;
-    console.log('🔐 Utente:', email, name);
 
-    // Verifica se l'email è autorizzata (se la lista è configurata)
+    // Verifica se l'email e autorizzata (se la lista e configurata)
     if (AUTHORIZED_EMAILS.length > 0 && !AUTHORIZED_EMAILS.includes(email)) {
-      console.log('🔐 Email non autorizzata:', email);
-      return res.redirect('/auth/login?error=Email non autorizzata');
+      return res.redirect('/auth/login?error=' + encodeURIComponent('Email non autorizzata'));
     }
 
     // Salva sessione
@@ -219,17 +537,16 @@ router.get('/google/callback', async (req, res) => {
       email,
       name,
       picture,
+      authMethod: 'google',
       loggedInAt: new Date().toISOString()
     };
 
-    console.log(`✅ Login: ${email}`);
+    console.log(`Login (Google): ${email}`);
     res.redirect('/');
 
   } catch (err) {
-    console.error('🔐 Errore login:', err.message);
-    console.error('🔐 Stack:', err.stack);
-    const errorMsg = encodeURIComponent(err.message || 'Errore durante il login');
-    res.redirect('/auth/login?error=' + errorMsg);
+    console.error('Errore login Google:', err.message);
+    res.redirect('/auth/login?error=' + encodeURIComponent(err.message || 'Errore durante il login'));
   }
 });
 
@@ -237,7 +554,7 @@ router.get('/google/callback', async (req, res) => {
 router.get('/logout', (req, res) => {
   const user = req.session?.user?.email || 'unknown';
   req.session.destroy((err) => {
-    console.log(`👋 Logout: ${user}`);
+    console.log(`Logout: ${user}`);
     res.redirect('/auth/login');
   });
 });
@@ -253,7 +570,6 @@ router.get('/user', (req, res) => {
 
 // Middleware per proteggere le route
 function requireAuth(req, res, next) {
-  // Escludi le route pubbliche
   const publicPaths = ['/auth/', '/css/', '/js/', '/images/', '/favicon'];
   const isPublic = publicPaths.some(p => req.path.startsWith(p));
 
@@ -265,12 +581,10 @@ function requireAuth(req, res, next) {
     return next();
   }
 
-  // Se è una richiesta API, ritorna 401
   if (req.path.startsWith('/api/')) {
     return res.status(401).json({ error: 'Non autenticato' });
   }
 
-  // Altrimenti redirect al login
   res.redirect('/auth/login');
 }
 
